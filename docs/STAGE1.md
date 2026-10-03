@@ -1733,10 +1733,341 @@ sequenceDiagram
 
 *Diagram not rendering? See the [rendered image](diagrams/sd09-solution-landscape.png).*
 
+## 8. Feature-to-Design Traceability
+
+Every feature in section 2 is traced to the use case that describes it, the classes and
+methods that implement it, the sequence diagram that shows it at runtime, and the design
+patterns it relies on. All class and method names below are declared in the class diagram
+in section 3.
+
+Two patterns recur in almost every row, and that is a property of the architecture rather
+than padding: every feature enters through the Facade (`AppController`), and every feature
+that touches project state reads the Singleton (`ProjectMemory`). The remaining pattern in
+each row is the one that actually shapes that feature.
+
+| Feature | Description | Type | Use case | Classes | Key methods | Seq. | Patterns |
+|---|---|---|---|---|---|---|---|
+| **F01** | Project profile setup | Deterministic | UC01 | `MainGUI`, `CLI`, `AppController`, `ProjectProfile`, `ProjectMemory` | `saveProfile()`, `getProfile()`, `showDashboard()` | SD01 | Facade, Singleton |
+| **F02** | Import project context | Hybrid | UC02 | `AppController`, `ProjectContextAgent`, `ProjectContextProvider`, `ClaudeCodeContextProvider`, `FileBasedContextProvider`, `ContextSnapshot`, `ProjectMemory`, `LLMClient` | `importProjectContext()`, `selectProvider()`, `isAvailable()`, `scan()`, `saveSnapshot()` | SD02 | **Adapter**, Template Method, Facade |
+| **F03** | Discover new papers | AI | UC03 | `AppController`, `PaperDiscoveryAgent`, `ToolManager`, `LiteratureSource`, `ArxivSource`, `SemanticScholarSource`, `LLMClient`, `PaperFeedListener`, `PaperFeedPanel`, `DigestBuilder`, `PaperRecord` | `discoverPapers()`, `run()`, `search()`, `setLiteratureSource()`, `notifyListeners()`, `onNewPaper()` | SD03 | **Strategy**, **Observer**, Template Method, Facade |
+| **F04** | Analyze a paper | AI | UC04 | `AppController`, `PaperAnalysisAgent`, `ToolManager`, `PaperParser`, `LLMClient`, `PaperAnalysis`, `ProjectMemory` | `analyzePaper()`, `plan()`, `parsePaper()`, `parse()`, `generate()`, `addPaperAnalysis()` | SD04 | **Template Method**, Adapter, Facade |
+| **F05** | Classify paper by strategy | AI | UC04 | `PaperAnalysisAgent`, `StrategyTaxonomy`, `PaperAnalysis` | `classifyPaper()`, `classify()`, `match()`, `isKnown()` | SD04 | Template Method, Facade |
+| **F06** | Compare paper to own project | AI | UC05 | `AppController`, `ResearchConsultantAgent`, `ProjectMemory`, `ProjectProfile`, `PaperAnalysis`, `ComparisonResult`, `LLMClient` | `comparePaper()`, `compare()`, `getProfile()`, `generate()`, `summarize()` | SD05 | Template Method, Facade, Singleton |
+| **F07** | Comparability check | Hybrid | UC06 | `ResearchConsultantAgent`, `ComparabilityChecker`, `PaperAnalysis`, `ProjectProfile`, `ComparisonResult` | `isComparable()`, `findMismatches()` | SD05 | Facade *(deterministic domain service — introduces no pattern of its own, by design)* |
+| **F08** | "Has anyone tried this" search | AI | UC07 | `AppController`, `ResearchConsultantAgent`, `ProjectMemory`, `ToolManager`, `LiteratureSource`, `PaperAnalysis`, `LLMClient` | `searchPriorWork()`, `getPaperAnalyses()`, `search()`, `generate()` | SD06 | Strategy, Facade, Singleton |
+| **F09** | Repository analysis | Hybrid | UC08 | `AppController`, `RepositoryAnalysisAgent`, `ToolManager`, `GitHubClient`, `RepoMetadata`, `RepoSummary`, `LLMClient` | `checkRepository()`, `fetchRepo()`, `generate()`, `summarize()` | SD07 | Template Method, Adapter, Facade |
+| **F10** | Project change summary | Hybrid | UC09 | `AppController`, `ProjectContextAgent`, `ProjectContextProvider`, `ContextSnapshot`, `ProjectMemory`, `LLMClient` | `summarizeProjectChanges()`, `getLastSnapshot()`, `scan()`, `summarizeChanges()`, `saveSnapshot()` | SD02 | Adapter, Facade, Singleton |
+| **F11** | Project-aware chat | AI | UC10 | `AppController`, `ResearchConsultantAgent`, `ProjectMemory`, `ProjectProfile`, `PaperAnalysis`, `LLMClient` | `ask()`, `getPaperAnalyses()`, `getProfile()`, `generate()` | SD06 | Template Method, Facade, Singleton |
+| **F12** | Weekly digest | Hybrid | UC11 | `AppController`, `DigestBuilder`, `PaperFeedListener`, `ProjectMemory`, `Digest`, `PaperRecord`, `LLMClient` | `buildDigest()`, `onNewPaper()`, `getPaperAnalyses()`, `getLastSnapshot()`, `showDigest()` | SD08 | **Observer**, Facade, Singleton |
+| **F13** | Solution landscape | Hybrid | UC12 | `AppController`, `ResearchConsultantAgent`, `StrategyTaxonomy`, `StrategyNode`, `PaperAnalysis`, `ProjectMemory`, `LLMClient` | `buildSolutionLandscape()`, `seedRoots()`, `buildLandscape()`, `summarizeBranch()`, `getChildren()`, `paperCount()`, `isLeaf()`, `saveLandscape()` | SD09 | **Composite**, Facade, Singleton |
+
+### Coverage checks
+
+- **Every feature is traceable.** All 13 features map to a use case, a set of classes, named methods, a sequence diagram and at least one pattern. No feature exists only in the project description.
+- **Every use case is reached.** UC01–UC12 all appear in the table. UC04 carries two features (F04 analysis and F05 classification) and UC05/UC06 split F06 and F07, matching the `<<include>>` in section 5.
+- **Every sequence diagram is used.** SD01–SD09 all appear. SD02, SD04, SD05 and SD06 each serve two features, which is why nine diagrams cover thirteen features.
+- **Every pattern earns its place.** Each of the seven patterns in section 4 appears in at least one row, and each is the *shaping* pattern (shown in bold) for at least one feature — Adapter for F02, Strategy and Observer for F03, Template Method for F04, Observer for F12, Composite for F13.
+
+## 9. How Each Feature Is Realized
+
+For each feature: the use case that describes it, the sequence diagram that shows it, the
+classes with their responsibility in that feature, the methods that carry it, and how they
+collaborate at runtime. Format follows the `F01 — Generate a Travel Plan` example in
+`stage1.pdf`.
+
+### F01 — Project Profile Setup
+**Use case:** UC01 · **Sequence diagram:** SD01
+
+**Classes involved**
+- `MainGUI` — presents the profile form and reports validation errors inline.
+- `CLI` — offers the same operation non-graphically.
+- `AppController` — validates the submitted fields; the single entry point for the feature.
+- `ProjectProfile` — holds research question, datasets, models, metrics and own results.
+- `ProjectMemory` — persists the profile as the one shared copy.
+
+**Important methods**
+`AppController.saveProfile()` · `ProjectMemory.saveProfile()` · `ProjectMemory.getProfile()` · `MainGUI.showDashboard()`
+
+**Execution.** The researcher fills the form and saves. `MainGUI` hands the populated
+`ProjectProfile` to `AppController.saveProfile()`, which checks the required fields. If any
+is empty the controller returns a validation error and **nothing is written** — the previous
+profile stays intact. Otherwise the profile is passed to `ProjectMemory.saveProfile()`, and
+`showDashboard()` redisplays it. Because `ProjectMemory` is a singleton, every agent and the
+CLI see the new profile immediately, with no synchronisation step. This is the only feature
+that touches no agent and no LLM.
+
+### F02 — Import Project Context
+**Use case:** UC02 · **Sequence diagram:** SD02
+
+**Classes involved**
+- `AppController` — receives the chosen directory path.
+- `ProjectContextAgent` — decides which provider to use and summarises the result.
+- `ProjectContextProvider` — the interface both providers satisfy.
+- `ClaudeCodeContextProvider` — delegates to a coding agent working in that directory, yielding *intent*.
+- `FileBasedContextProvider` — reads Git history, configs and result files directly, yielding *facts*.
+- `ContextSnapshot` — the uniform result either provider returns.
+- `LLMClient`, `ProjectMemory` — narration and storage.
+
+**Important methods**
+`AppController.importProjectContext()` · `ProjectContextAgent.selectProvider()` · `ProjectContextProvider.isAvailable()` · `ProjectContextProvider.scan()` · `ProjectMemory.saveSnapshot()`
+
+**Execution.** `importProjectContext()` passes the path to `ProjectContextAgent`, whose
+`selectProvider()` calls `isAvailable()` on the Claude Code provider first. If a coding agent
+is present it is asked to describe the project's current state; otherwise the file-based
+provider scans the directory. Either way the agent receives a `ContextSnapshot` and **cannot
+tell which provider produced it** — that is the Adapter doing its work. The notable items go
+to `LLMClient.generate()` for a readable summary, the snapshot is stored by
+`saveSnapshot()`, and the UI reports which provider answered so the researcher knows whether
+they are reading intent or facts. If the coding agent times out or returns something
+unusable, the fallback runs rather than failing the import.
+
+### F03 — Discover New Papers
+**Use case:** UC03 · **Sequence diagram:** SD03
+
+**Classes involved**
+- `AppController` — entry point; fetches the profile that defines relevance.
+- `PaperDiscoveryAgent` — plans queries, judges relevance, broadcasts results.
+- `ToolManager` — holds the currently selected literature source.
+- `LiteratureSource` with `ArxivSource`, `SemanticScholarSource` — interchangeable search back ends.
+- `PaperFeedListener` with `PaperFeedPanel`, `DigestBuilder` — independent consumers of new papers.
+- `PaperRecord` — a candidate paper.
+
+**Important methods**
+`AppController.discoverPapers()` · `Agent.run()` · `ToolManager.search()` · `LiteratureSource.search()` · `PaperDiscoveryAgent.notifyListeners()` · `PaperFeedListener.onNewPaper()`
+
+**Execution.** `discoverPapers()` reads the profile from `ProjectMemory` and invokes
+`run()` on `PaperDiscoveryAgent`. Inside the template, `plan()` turns the research question
+into queries, `executeTools()` calls `ToolManager.search()`, which delegates to whichever
+`LiteratureSource` is currently set — the Strategy, swappable through
+`setLiteratureSource()` without the agent knowing. Returned `PaperRecord`s are ranked for
+relevance against the profile by `LLMClient.generate()`. The agent then calls
+`notifyListeners()` **once**, and both `PaperFeedPanel` (which draws the row) and
+`DigestBuilder` (which stores it for the next digest) react independently through
+`onNewPaper()`. A failed API shows a retry and leaves existing papers visible; zero results
+produce an explicit empty state, never a blank feed.
+
+### F04 — Analyze a Paper
+**Use case:** UC04 · **Sequence diagram:** SD04
+
+**Classes involved**
+- `AppController` — entry point for analysis.
+- `PaperAnalysisAgent` — orchestrates extraction through the inherited template.
+- `ToolManager`, `PaperParser` — obtain the paper's text.
+- `LLMClient` — extracts the structured fields.
+- `PaperAnalysis` — the structured record produced.
+- `ProjectMemory` — stores it.
+
+**Important methods**
+`AppController.analyzePaper()` · `Agent.run()` · `ToolManager.parsePaper()` · `PaperParser.parse()` · `LLMClient.generate()` · `ProjectMemory.addPaperAnalysis()`
+
+**Execution.** `analyzePaper()` invokes `run()` on `PaperAnalysisAgent`. The fixed order
+declared in `Agent` — `plan()`, `executeTools()`, `summarize()` — is inherited unchanged;
+only the three protected hooks are overridden, which is why every agent in the system
+behaves predictably. `executeTools()` requests text via `ToolManager.parsePaper()`, then
+`LLMClient.generate()` extracts problem, method, dataset, model, metrics, results and
+limitations into a `PaperAnalysis`, which `addPaperAnalysis()` stores. An unparseable PDF
+falls back to the abstract, and a partial extraction is still saved with the missing fields
+explicitly marked unknown rather than guessed.
+
+### F05 — Classify Paper by Strategy
+**Use case:** UC04 · **Sequence diagram:** SD04
+
+**Classes involved**
+- `PaperAnalysisAgent` — performs classification as the closing step of analysis.
+- `StrategyTaxonomy` — the known strategy vocabulary.
+- `PaperAnalysis` — receives the resulting tags.
+
+**Important methods**
+`AppController.classifyPaper()` · `PaperAnalysisAgent.classify()` · `StrategyTaxonomy.match()` · `StrategyTaxonomy.isKnown()`
+
+**Execution.** Once the fields are extracted, `classify()` passes the paper's `method`
+text to `StrategyTaxonomy.match()`, which returns the strategy tags it recognises. Tags land
+in `PaperAnalysis.strategyTags`, which drives both the feed's strategy filter and the
+placement of the paper in the F13 landscape. Where confidence is low the tag is marked
+*uncertain* rather than asserted, so a weak classification is visible instead of silently
+becoming fact.
+
+### F06 — Compare Paper to Own Project
+**Use case:** UC05 · **Sequence diagram:** SD05
+
+**Classes involved**
+- `AppController` — entry point.
+- `ResearchConsultantAgent` — reasons over the paper and the project together.
+- `ProjectMemory`, `ProjectProfile` — supply the researcher's own work.
+- `PaperAnalysis` — the paper side of the comparison.
+- `ComparisonResult` — similarities, differences and the comparability verdict.
+
+**Important methods**
+`AppController.comparePaper()` · `ResearchConsultantAgent.compare()` · `ProjectMemory.getProfile()` · `LLMClient.generate()`
+
+**Execution.** `comparePaper()` loads the profile and calls `compare()`. If the profile is
+incomplete the agent reports exactly which fields are missing instead of guessing around
+them. Otherwise it runs the comparability check of F07 — never skipped, matching the
+`<<include>>` in section 5 — and then has `LLMClient.generate()` produce similarities,
+differences and what is novel, each citing the specific `PaperAnalysis` fields it drew on.
+The result is a `ComparisonResult` rendered by `MainGUI.showComparison()`.
+
+### F07 — Comparability Check
+**Use case:** UC06 · **Sequence diagram:** SD05
+
+**Classes involved**
+- `ComparabilityChecker` — compares dataset, metric and split deterministically.
+- `PaperAnalysis`, `ProjectProfile` — the two sides being compared.
+- `ComparisonResult` — carries the verdict and its explanation.
+- `ResearchConsultantAgent` — requests the check and narrates the outcome.
+
+**Important methods**
+`ComparabilityChecker.isComparable()` · `ComparabilityChecker.findMismatches()`
+
+**Execution.** `isComparable()` compares the paper's dataset, metric and split against the
+project's own and returns *true*, *false*, or *cannot determine*; `findMismatches()` lists
+each specific difference. **No LLM participates in the verdict** — the model is only asked
+afterwards to phrase it in context. A field unknown on either side yields *cannot determine*
+and is never silently treated as a match, which is the single rule that makes the whole tool
+trustworthy: a false "comparable" would invite a researcher to draw a conclusion the
+evidence does not support. If the LLM is unavailable the verdict and raw mismatch list are
+still shown without narration.
+
+### F08 — "Has Anyone Tried This" Search
+**Use case:** UC07 · **Sequence diagram:** SD06
+
+**Classes involved**
+- `AppController` — entry point for the idea query.
+- `ResearchConsultantAgent` — searches both sources and synthesises the evidence.
+- `ProjectMemory` — supplies papers already analysed.
+- `ToolManager`, `LiteratureSource` — reach papers never seen before.
+- `LLMClient` — writes the synthesis.
+
+**Important methods**
+`AppController.searchPriorWork()` · `ProjectMemory.getPaperAnalyses()` · `ToolManager.search()` · `LLMClient.generate()`
+
+**Execution.** `searchPriorWork()` passes the idea to the agent, which queries **both**
+the live literature source and the `PaperAnalysis` records already in memory — the second
+matters because the closest prior work is often a paper the researcher read months ago and
+forgot. `LLMClient.generate()` then synthesises the closest evidence with its sources and a
+confidence note. If the literature API fails, local results are still returned with the gap
+stated. When nothing matches, the answer is *"no matching evidence found"* and explicitly
+**not** *"no one has tried this"* — two searches cannot prove absence, and a tool that
+implied otherwise could send a researcher into months of rediscovery.
+
+### F09 — Repository Analysis
+**Use case:** UC08 · **Sequence diagram:** SD07
+
+**Classes involved**
+- `AppController` — entry point.
+- `RepositoryAnalysisAgent` — orchestrates the lookup and summary.
+- `ToolManager`, `GitHubClient` — read repository metadata.
+- `RepoMetadata` — the raw API result.
+- `RepoSummary` — the readable verdict on reusability.
+
+**Important methods**
+`AppController.checkRepository()` · `ToolManager.fetchRepo()` · `GitHubClient.fetchRepo()` · `LLMClient.generate()`
+
+**Execution.** If the `PaperRecord` carries no `repoUrl`, the controller reports that
+plainly and no call is made. Otherwise `RepositoryAnalysisAgent` calls
+`ToolManager.fetchRepo()`, which uses `GitHubClient` to read **metadata only** — repository
+code is never downloaded and never executed, a constraint recorded directly in SD07.
+`LLMClient.generate()` turns the metadata into a `RepoSummary` covering README quality,
+licence, datasets and evaluation scripts. Private, missing and rate-limited repositories are
+distinct reported outcomes rather than one generic failure.
+
+### F10 — Project Change Summary
+**Use case:** UC09 · **Sequence diagram:** SD02
+
+**Classes involved**
+- `AppController` — entry point.
+- `ProjectContextAgent` — diffs two snapshots and narrates the difference.
+- `ProjectContextProvider` — re-scans the project directory.
+- `ContextSnapshot` — both the stored and the fresh state.
+- `ProjectMemory` — holds the previous snapshot and receives the new one.
+
+**Important methods**
+`AppController.summarizeProjectChanges()` · `ProjectMemory.getLastSnapshot()` · `ProjectContextProvider.scan()` · `ProjectContextAgent.summarizeChanges()` · `ProjectMemory.saveSnapshot()`
+
+**Execution.** `summarizeProjectChanges()` retrieves the stored snapshot via
+`getLastSnapshot()`. With no prior snapshot the system says so and points the researcher at
+F02 rather than showing an empty panel. Otherwise the provider re-scans the directory and
+`summarizeChanges()` diffs old against new, with `LLMClient.generate()` phrasing the result.
+The fresh snapshot then replaces the stored one. This feature is what keeps project memory
+honest: if the researcher changed their metric last week and the system never noticed, every
+comparability verdict in F07 would be checked against a stale description of their own work.
+
+### F11 — Project-Aware Chat
+**Use case:** UC10 · **Sequence diagram:** SD06
+
+**Classes involved**
+- `AppController` — entry point for free-form questions.
+- `ResearchConsultantAgent` — retrieves relevant records, then answers from them.
+- `ProjectMemory`, `ProjectProfile`, `PaperAnalysis` — the only permitted evidence.
+- `LLMClient` — produces the answer text.
+
+**Important methods**
+`AppController.ask()` · `ProjectMemory.getPaperAnalyses()` · `ProjectMemory.getProfile()` · `LLMClient.generate()`
+
+**Execution.** `ask()` hands the question to the agent, which **first** retrieves the
+relevant profile, analyses and latest snapshot, and only then prompts
+`LLMClient.generate()` to answer *using that context alone*. The answer is shown with
+references to the records it used, so every claim can be traced back. If nothing relevant is
+stored the agent says so rather than answering from the model's general knowledge. That
+retrieve-then-answer ordering is what separates this from a chatbot wrapper, which
+`Project-Instruction.pdf` §3.2 rules out as insufficient.
+
+### F12 — Weekly Digest
+**Use case:** UC11 · **Sequence diagram:** SD08
+
+**Classes involved**
+- `AppController` — entry point for scheduled and manual runs.
+- `DigestBuilder` — a `PaperFeedListener` that has been accumulating papers since the last digest.
+- `ProjectMemory` — supplies analyses and the latest change summary.
+- `Digest` — the assembled result.
+
+**Important methods**
+`AppController.buildDigest()` · `DigestBuilder.onNewPaper()` · `DigestBuilder.buildDigest()` · `ProjectMemory.getPaperAnalyses()` · `MainGUI.showDigest()`
+
+**Execution.** `DigestBuilder` does most of its work long before the digest is requested:
+registered as a `PaperFeedListener`, it receives `onNewPaper()` every time F03 discovers
+something, so by the time `buildDigest()` is called it already holds the new papers and does
+not need to re-query. It adds their analyses and the latest change summary from
+`ProjectMemory`, and `LLMClient.generate()` composes the narrative. With nothing new, an
+explicit *"nothing new since &lt;date&gt;"* is shown rather than an empty view. The feature can
+run on a schedule with no user action, which is why the Observer matters — a polling design
+would have to ask what changed, whereas this one was told as it happened.
+
+### F13 — Solution Landscape
+**Use case:** UC12 · **Sequence diagram:** SD09
+
+**Classes involved**
+- `AppController` — entry point.
+- `ResearchConsultantAgent` — proposes sub-branches, places papers, writes branch summaries.
+- `StrategyTaxonomy` — seeds the fixed top-level categories.
+- `StrategyNode` — component, composite and leaf in one type.
+- `ProjectMemory` — supplies the analyses and caches the built tree.
+
+**Important methods**
+`AppController.buildSolutionLandscape()` · `StrategyTaxonomy.seedRoots()` · `ResearchConsultantAgent.buildLandscape()` · `ResearchConsultantAgent.summarizeBranch()` · `StrategyNode.getChildren()` · `StrategyNode.paperCount()` · `ProjectMemory.saveLandscape()`
+
+**Execution.** `buildSolutionLandscape()` loads the stored analyses and the profile. With
+too few analysed papers it shows only the seeded roots and says so, rather than inventing a
+taxonomy from two papers. Otherwise `seedRoots()` creates the fixed top-level categories
+**deterministically**, and `buildLandscape()` asks `LLMClient.generate()` to propose
+sub-branches beneath them and place each paper, attaching them with `StrategyNode.add()`. A
+paper matching no branch goes to an explicit *Unclassified* node rather than being forced
+into the nearest one. `summarizeBranch()` then walks the tree recursively: because a branch
+and a leaf are the same type, `getChildren()` and `paperCount()` work at any depth with no
+test for which kind a node is — the Composite earning its place. Finally the branch matching
+the profile's own method is flagged, the tree is cached by `saveLandscape()`, and
+`MainGUI.showSolutionLandscape()` renders it. The deterministic seed and the agent's
+proposals stay clearly separated, which is what makes this feature testable in Stage 3:
+`seedRoots()` and `paperCount()` are ordinary unit tests, while "were the proposed branches
+sensible" is a KUMA behavioural test.
+
 ## Notes
-- GUI and CLI both need to reach every feature above, per the Stage 1 requirements.
-- `AppController` exposes one method per feature F01-F13, so the traceability
-  table in section 8 has a concrete entry point for every row.
-- Next: the feature-to-design traceability table (section 8) and the per-feature
-  realization explanations (section 9). Both are mechanical now that features, classes,
-  use cases and sequence diagrams all exist and cross-check clean.
+- GUI and CLI both reach every feature, per the Stage 1 requirements; `AppController`
+  exposes exactly one method per feature F01-F13.
+- **All nine Stage 1 deliverables are present.** Sections 1-9 correspond to the nine
+  items in the "Stage 1 Deliverables" list in `stage1.pdf`.
+- Internal consistency is checked mechanically, not by eye: every class and method named
+  anywhere in sections 2, 6, 8 and 9 is declared in the class diagram in section 3; every
+  participant and message in the nine sequence diagrams resolves to a declared class and
+  method; sections 8 and 9 agree on each feature's use case and sequence diagram; and each
+  embedded Mermaid block is byte-identical to its source file under `diagrams/`.
