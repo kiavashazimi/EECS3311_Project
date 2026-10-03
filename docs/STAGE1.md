@@ -1,6 +1,6 @@
 # Stage 1 Report — Project-Aware Research Consultant
 
-Draft for the Stage 1 deliverables in `stage1.pdf`. Review and edit before copying into the final report / repo.
+Draft for the Stage 1 deliverables in `stage1.pdf`.
 
 ## 1. Project Overview
 
