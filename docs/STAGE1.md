@@ -2061,13 +2061,4 @@ proposals stay clearly separated, which is what makes this feature testable in S
 `seedRoots()` and `paperCount()` are ordinary unit tests, while "were the proposed branches
 sensible" is a KUMA behavioural test.
 
-## Notes
-- GUI and CLI both reach every feature, per the Stage 1 requirements; `AppController`
-  exposes exactly one method per feature F01-F13.
-- **All nine Stage 1 deliverables are present.** Sections 1-9 correspond to the nine
-  items in the "Stage 1 Deliverables" list in `stage1.pdf`.
-- Internal consistency is checked mechanically, not by eye: every class and method named
-  anywhere in sections 2, 6, 8 and 9 is declared in the class diagram in section 3; every
-  participant and message in the nine sequence diagrams resolves to a declared class and
-  method; sections 8 and 9 agree on each feature's use case and sequence diagram; and each
-  embedded Mermaid block is byte-identical to its source file under `diagrams/`.
+
