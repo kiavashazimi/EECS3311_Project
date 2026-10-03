@@ -1,0 +1,23 @@
+classDiagram
+    direction TB
+    class ProjectMemory {
+        <<Singleton>>
+        -instance: ProjectMemory
+        -profile: ProjectProfile
+        -papers: List~PaperAnalysis~
+        -lastSnapshot: ContextSnapshot
+        -landscape: StrategyNode
+        -ProjectMemory()
+        +getInstance() ProjectMemory
+        +saveProfile(p: ProjectProfile)
+        +getProfile() ProjectProfile
+        +addPaperAnalysis(a: PaperAnalysis)
+        +getPaperAnalyses() List~PaperAnalysis~
+    }
+    class AppController
+    class MainGUI
+    class CLI
+    MainGUI "1" --> "1" AppController
+    CLI "1" --> "1" AppController
+    AppController "1" --> "1" ProjectMemory
+    note for ProjectMemory "SINGLETON. Private constructor, static instance,<br/>getInstance() is the only way in.<br/>One shared project state - the GUI and the CLI<br/>can never drift out of sync."

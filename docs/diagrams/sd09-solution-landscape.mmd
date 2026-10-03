@@ -1,0 +1,66 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as ResearchConsultantAgent
+    participant TX as StrategyTaxonomy
+    participant N as StrategyNode
+    participant M as ProjectMemory
+    participant L as LLMClient
+
+    R->>+GUI: opens "Strategies", or clicks Rebuild
+    GUI->>+C: buildSolutionLandscape()
+    C->>+M: getPaperAnalyses()
+    M-->>C: stored List of PaperAnalysis
+    C->>M: getProfile()
+    M-->>-C: ProjectProfile
+    alt too few analysed papers
+        C->>+TX: seedRoots()
+        TX-->>-C: root with fixed categories only
+        C-->>GUI: seeded roots
+        GUI-->>R: "not enough analysed papers to derive sub-branches"
+    else enough to build a landscape
+        C->>+A: buildLandscape(items, p)
+        A->>+TX: seedRoots()
+        Note right of TX: Deterministic - the fixed<br/>top-level categories
+        TX->>+N: new StrategyNode(category)
+        N-->>-TX: node
+        TX-->>-A: root StrategyNode
+        A->>+L: generate(propose sub-branches for these analyses)
+        alt LLM unavailable
+            L-->>A: ServiceError
+            Note right of A: tree still built from the fixed roots<br/>and the stored strategy tags
+        else proposals returned
+            L-->>A: proposed sub-branches and placements
+            loop for each proposed sub-branch
+                A->>N: add(child: StrategyNode)
+            end
+            opt a paper matches no branch
+                A->>N: add(Unclassified node)
+                Note right of N: never force-fitted into<br/>the nearest branch
+            end
+        end
+        deactivate L
+        A->>A: summarizeBranch(root)
+        Note over A,N: Composite - one recursive walk handles every<br/>depth, because a branch and a leaf are the same type
+        loop recursively, for each child node
+            A->>+N: getChildren()
+            N-->>A: child nodes
+            A->>N: paperCount()
+            N-->>-A: count for this subtree
+            A->>+L: generate(main idea of this branch)
+            L-->>-A: branch summary
+        end
+        A->>A: flag the branch matching the profile's own method
+        opt profile records no method
+            Note right of A: tree shown without the<br/>"your approach" marker
+        end
+        A-->>-C: root StrategyNode
+        C->>M: saveLandscape(root)
+        C-->>GUI: root StrategyNode
+        GUI->>GUI: showSolutionLandscape(root)
+        GUI-->>R: tree, branch main idea, papers, own-approach marker
+    end
+    deactivate C
+    deactivate GUI

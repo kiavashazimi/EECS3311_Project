@@ -1,0 +1,63 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as PaperDiscoveryAgent
+    participant T as ToolManager
+    participant S as LiteratureSource
+    participant L as LLMClient
+    participant M as ProjectMemory
+    participant FP as PaperFeedPanel
+    participant DB as DigestBuilder
+
+    R->>+GUI: clicks "Discover papers"
+    GUI->>+C: discoverPapers()
+    C->>+M: getProfile()
+    M-->>-C: ProjectProfile
+    C->>+A: run(profile)
+    A->>A: plan(profile)
+    Note right of A: Template Method - the fixed run()<br/>order is defined once in Agent
+    A->>+T: search(query)
+    T->>+S: search(query)
+    Note right of S: Strategy - ArxivSource or<br/>SemanticScholarSource
+    alt literature API fails
+        S-->>T: ApiError
+        T-->>A: ApiError
+        A-->>C: error
+        C-->>GUI: error with Retry
+        GUI-->>R: previous papers remain visible
+    else zero results
+        S-->>T: empty list
+        T-->>A: empty list
+        A-->>C: no new papers
+        C-->>GUI: explicit empty state
+        GUI-->>R: "no new papers" message
+    else results returned
+        S-->>T: List of PaperRecord
+        T-->>A: List of PaperRecord
+        A->>+L: generate(relevance prompt vs profile)
+        alt LLM unavailable
+            L-->>A: ServiceError
+            A-->>C: results, unranked
+        else ranked
+            L-->>A: relevance judgements
+            A->>A: summarize(ranked results)
+            A-->>C: ranked List of PaperRecord
+        end
+        deactivate L
+        A->>A: notifyListeners(p)
+        Note right of A: Observer - one broadcast,<br/>two independent listeners
+        A->>+FP: onNewPaper(p)
+        FP-->>-R: feed row appears
+        A->>+DB: onNewPaper(p)
+        DB-->>-A: queued for the next digest
+        C-->>GUI: ranked papers
+        GUI->>GUI: showPaperFeed()
+        GUI-->>R: ranked feed with relevance notes
+    end
+    deactivate S
+    deactivate T
+    deactivate A
+    deactivate C
+    deactivate GUI

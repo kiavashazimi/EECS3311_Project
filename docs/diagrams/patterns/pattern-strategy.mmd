@@ -1,0 +1,24 @@
+classDiagram
+    direction LR
+    class ToolManager {
+        -literatureSource: LiteratureSource
+        +setLiteratureSource(s: LiteratureSource)
+        +search(query: String) List~PaperRecord~
+    }
+    class LiteratureSource {
+        <<interface>>
+        +search(query: String) List~PaperRecord~
+    }
+    class ArxivSource {
+        +search(query: String) List~PaperRecord~
+    }
+    class SemanticScholarSource {
+        +search(query: String) List~PaperRecord~
+    }
+    LiteratureSource <|.. ArxivSource
+    LiteratureSource <|.. SemanticScholarSource
+    ToolManager "1" --> "1" LiteratureSource
+    note for ToolManager "CONTEXT - holds one strategy,<br/>swappable at runtime"
+    note for LiteratureSource "STRATEGY - the interchangeable algorithm"
+    note for ArxivSource "CONCRETE STRATEGY"
+    note for SemanticScholarSource "CONCRETE STRATEGY"

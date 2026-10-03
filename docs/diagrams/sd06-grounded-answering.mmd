@@ -1,0 +1,62 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as ResearchConsultantAgent
+    participant M as ProjectMemory
+    participant T as ToolManager
+    participant S as LiteratureSource
+    participant L as LLMClient
+
+    Note over R,L: F08 "has anyone tried this" and F11 project-aware chat share one shape -<br/>retrieve first, then answer only from what was retrieved
+    alt F08 - idea described in the query box
+        R->>+GUI: types an idea
+        GUI->>+C: searchPriorWork(idea)
+    else F11 - question asked in chat
+        R->>GUI: types a question
+        GUI->>C: ask(question)
+    end
+    C->>+A: run(input)
+    A->>A: plan(input)
+    A->>+M: getPaperAnalyses()
+    M-->>A: stored List of PaperAnalysis
+    A->>M: getProfile()
+    M-->>-A: ProjectProfile
+    opt F08 only - also search live literature
+        A->>+T: search(query)
+        T->>+S: search(query)
+        alt literature API fails
+            S-->>T: ApiError
+            T-->>A: ApiError
+            Note right of A: local memory results are still<br/>returned, and the gap is stated
+        else results returned
+            S-->>T: List of PaperRecord
+            T-->>A: List of PaperRecord
+        end
+        deactivate S
+        deactivate T
+    end
+    alt nothing relevant found
+        A-->>C: no matching evidence
+        C-->>GUI: explicit "nothing found"
+        GUI-->>R: never phrased as "no one has tried this"
+    else relevant records retrieved
+        A->>+L: generate(answer using ONLY this retrieved context)
+        alt LLM unavailable
+            L-->>A: ServiceError
+            A-->>C: error
+            C-->>GUI: retry offered
+            GUI-->>R: no answer fabricated
+        else grounded answer returned
+            L-->>A: grounded answer
+            A->>A: summarize(result)
+            A-->>C: answer + the records used
+            C-->>GUI: answer with references
+            GUI-->>R: answer, each claim traceable to a record
+        end
+        deactivate L
+    end
+    deactivate A
+    deactivate C
+    deactivate GUI

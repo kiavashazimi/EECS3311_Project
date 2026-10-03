@@ -6,6 +6,9 @@ classDiagram
         -controller: AppController
         +showDashboard()
         +showPaperFeed()
+        +showPaperDetail(a: PaperAnalysis)
+        +showComparison(r: ComparisonResult)
+        +showDigest(d: Digest)
         +showSolutionLandscape(root: StrategyNode)
     }
     class CLI {
@@ -48,39 +51,40 @@ classDiagram
     }
     class PaperDiscoveryAgent {
         -listeners: List~PaperFeedListener~
-        +plan(input) Plan
-        +executeTools(plan) Object
-        +summarize(result) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
         +addListener(l: PaperFeedListener)
         +notifyListeners(p: PaperRecord)
     }
     class PaperAnalysisAgent {
         -taxonomy: StrategyTaxonomy
-        +plan(input) Plan
-        +executeTools(plan) Object
-        +summarize(result) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
         +classify(a: PaperAnalysis) List~String~
     }
     class ResearchConsultantAgent {
         -checker: ComparabilityChecker
-        +plan(input) Plan
-        +executeTools(plan) Object
-        +summarize(result) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
         +compare(a: PaperAnalysis, p: ProjectProfile) ComparisonResult
         +buildLandscape(items: List~PaperAnalysis~, p: ProjectProfile) StrategyNode
         +summarizeBranch(n: StrategyNode) String
     }
     class ProjectContextAgent {
-        -provider: ProjectContextProvider
-        +plan(input) Plan
-        +executeTools(plan) Object
-        +summarize(result) Object
+        -providers: List~ProjectContextProvider~
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
         +summarizeChanges(old: ContextSnapshot, cur: ContextSnapshot) String
+        +selectProvider(path: String) ProjectContextProvider
     }
     class RepositoryAnalysisAgent {
-        +plan(input) Plan
-        +executeTools(plan) Object
-        +summarize(result) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
     }
     Agent <|-- PaperDiscoveryAgent
     Agent <|-- PaperAnalysisAgent
@@ -143,16 +147,19 @@ classDiagram
     class ProjectContextProvider {
         <<interface>>
         +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
     }
     class FileBasedContextProvider {
         +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
     }
     class ClaudeCodeContextProvider {
         +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
     }
     ProjectContextProvider <|.. FileBasedContextProvider
     ProjectContextProvider <|.. ClaudeCodeContextProvider
-    ProjectContextAgent "1" --> "1" ProjectContextProvider
+    ProjectContextAgent "1" --> "1..*" ProjectContextProvider : tries in order
     ProjectContextProvider ..> ContextSnapshot : returns
 
     %% ---------- Deterministic domain services ----------
@@ -288,3 +295,12 @@ classDiagram
     PaperDiscoveryAgent "1" --> "0..*" PaperFeedListener
     DigestBuilder ..> Digest : creates
     Digest "1" o-- "0..*" PaperRecord
+
+    note for AppController "Facade - one method per feature F01-F13,<br/>so MainGUI and CLI never touch the subsystem"
+    note for Agent "Template Method - run() fixes the order;<br/>subclasses override the protected hooks only"
+    note for LiteratureSource "Strategy - interchangeable search sources,<br/>swapped via ToolManager.setLiteratureSource()"
+    note for LLMClient "Adapter - wraps one provider's API<br/>behind the interface the agents expect"
+    note for ProjectContextProvider "Adapter - two sources of project context,<br/>selected at runtime with isAvailable()"
+    note for PaperFeedListener "Observer - PaperDiscoveryAgent broadcasts;<br/>listeners react independently"
+    note for ProjectMemory "Singleton - one shared project state<br/>for every agent, the GUI and the CLI"
+    note for StrategyNode "Composite - a node with no children is a leaf,<br/>so one recursive walk handles any depth"

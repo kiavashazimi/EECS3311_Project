@@ -1,0 +1,40 @@
+classDiagram
+    direction LR
+    class ToolManager {
+        -llm: LLMClient
+        +callLLM(prompt: String) String
+    }
+    class LLMClient {
+        <<interface>>
+        +generate(prompt: String) String
+    }
+    class ClaudeClient {
+        +generate(prompt: String) String
+    }
+    class ProjectContextAgent {
+        -providers: List~ProjectContextProvider~
+        +selectProvider(path: String) ProjectContextProvider
+    }
+    class ProjectContextProvider {
+        <<interface>>
+        +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
+    }
+    class FileBasedContextProvider {
+        +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
+    }
+    class ClaudeCodeContextProvider {
+        +scan(path: String) ContextSnapshot
+        +isAvailable(path: String) Boolean
+    }
+    LLMClient <|.. ClaudeClient
+    ToolManager "1" --> "1" LLMClient
+    ProjectContextProvider <|.. FileBasedContextProvider
+    ProjectContextProvider <|.. ClaudeCodeContextProvider
+    ProjectContextAgent "1" --> "1..*" ProjectContextProvider : tries in order
+    note for LLMClient "TARGET - the interface the agents expect"
+    note for ClaudeClient "ADAPTER - translates the provider's<br/>native API into generate()"
+    note for ProjectContextProvider "TARGET"
+    note for ClaudeCodeContextProvider "ADAPTER - delegates to a coding agent;<br/>falls back when isAvailable() is false"
+    note for FileBasedContextProvider "ADAPTER - reads Git, configs, results"

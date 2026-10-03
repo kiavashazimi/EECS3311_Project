@@ -1,0 +1,31 @@
+classDiagram
+    direction LR
+    class MainGUI {
+        -controller: AppController
+    }
+    class CLI {
+        -controller: AppController
+    }
+    class AppController {
+        +saveProfile(p: ProjectProfile)
+        +discoverPapers() List~PaperRecord~
+        +analyzePaper(p: PaperRecord) PaperAnalysis
+        +comparePaper(a: PaperAnalysis) ComparisonResult
+        +buildSolutionLandscape() StrategyNode
+    }
+    class Agent {
+        <<abstract>>
+    }
+    class ToolManager
+    class ProjectMemory {
+        <<Singleton>>
+    }
+    MainGUI "1" --> "1" AppController
+    CLI "1" --> "1" AppController
+    AppController "1" o-- "5" Agent
+    AppController "1" *-- "1" ToolManager
+    AppController "1" --> "1" ProjectMemory
+    note for AppController "FACADE. One method per feature.<br/>Clients never reach past it."
+    note for MainGUI "Client"
+    note for CLI "Client"
+    note for Agent "Subsystem"

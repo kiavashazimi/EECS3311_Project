@@ -1,0 +1,42 @@
+classDiagram
+    direction TB
+    class Agent {
+        <<abstract>>
+        #tools: ToolManager
+        +run(input: Object) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class PaperDiscoveryAgent {
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class PaperAnalysisAgent {
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class ResearchConsultantAgent {
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class ProjectContextAgent {
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class RepositoryAnalysisAgent {
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    Agent <|-- PaperDiscoveryAgent
+    Agent <|-- PaperAnalysisAgent
+    Agent <|-- ResearchConsultantAgent
+    Agent <|-- ProjectContextAgent
+    Agent <|-- RepositoryAnalysisAgent
+    note for Agent "ABSTRACT CLASS. run() is the template method -<br/>it calls plan, executeTools, summarize in a fixed order.<br/>Only the protected hooks are overridden."
+    note for PaperDiscoveryAgent "CONCRETE CLASS - supplies the steps,<br/>never changes their order"

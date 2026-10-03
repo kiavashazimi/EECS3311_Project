@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant DB as DigestBuilder
+    participant M as ProjectMemory
+    participant L as LLMClient
+
+    Note over DB: DigestBuilder has been collecting papers all along, as a<br/>PaperFeedListener - see notifyListeners() in SD03
+    alt scheduled run
+        Note over C: triggered on a schedule, with no user action
+    else researcher opens the digest view
+        R->>+GUI: opens Digest
+        GUI->>+C: buildDigest()
+    end
+    C->>+DB: buildDigest()
+    DB->>DB: collect papers observed since the last digest
+    DB->>+M: getPaperAnalyses()
+    M-->>DB: analyses for those papers
+    DB->>M: getLastSnapshot()
+    M-->>-DB: latest ContextSnapshot
+    alt nothing new since the last digest
+        DB-->>C: empty digest
+        C-->>GUI: "nothing new since <date>"
+        GUI-->>R: explicit message, not a blank view
+    else there is new material
+        DB->>+L: generate(compose the digest narrative)
+        alt LLM unavailable
+            L-->>DB: ServiceError
+            DB-->>C: assembled Digest without narrative
+            C-->>GUI: structured digest only
+            GUI-->>R: papers and changes listed, summary unavailable
+        else narrative returned
+            L-->>DB: digest narrative
+            DB-->>C: Digest
+            C-->>GUI: Digest
+            GUI->>GUI: showDigest(d)
+            GUI-->>R: new papers, highlights, project changes
+        end
+        deactivate L
+    end
+    deactivate DB
+    deactivate C
+    deactivate GUI

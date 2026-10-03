@@ -1,0 +1,69 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as ProjectContextAgent
+    participant CC as ClaudeCodeContextProvider
+    participant FB as FileBasedContextProvider
+    participant M as ProjectMemory
+    participant L as LLMClient
+
+    Note over R,L: F02 - import project context
+    R->>+GUI: picks a project directory
+    GUI->>+C: importProjectContext(path)
+    C->>+A: run(path)
+    A->>A: selectProvider(path)
+    A->>+CC: isAvailable(path)
+    alt coding agent present
+        CC-->>A: true
+        A->>CC: scan(path)
+        CC-->>A: ContextSnapshot (intent: what is in progress)
+    else no coding agent, or it times out
+        CC-->>A: false
+        A->>+FB: scan(path)
+        FB-->>A: ContextSnapshot (facts: commits, configs, results)
+        deactivate FB
+    end
+    deactivate CC
+    A->>+L: generate(prompt with notable items)
+    alt LLM unavailable
+        L-->>A: ServiceError
+        A-->>C: snapshot only, summary unavailable
+    else summary returned
+        L-->>A: readable summary
+        A-->>C: snapshot + summary
+    end
+    deactivate L
+    deactivate A
+    C->>+M: saveSnapshot(s)
+    M-->>-C: stored
+    C-->>GUI: imported facts + provider used
+    deactivate C
+    GUI-->>R: shows context, labelled by provider
+    deactivate GUI
+
+    Note over R,L: F10 - project change summary, later
+    R->>+GUI: opens "What changed"
+    GUI->>+C: summarizeProjectChanges()
+    C->>+M: getLastSnapshot()
+    alt no prior snapshot
+        M-->>C: null
+        C-->>GUI: prompt to import first
+        GUI-->>R: "import your project first"
+    else a snapshot exists
+        M-->>C: previous ContextSnapshot
+        C->>+A: run(previous)
+        A->>+FB: scan(path)
+        FB-->>-A: current ContextSnapshot
+        A->>A: summarizeChanges(old, cur)
+        A->>+L: generate(prompt with the diff)
+        L-->>-A: natural-language summary
+        A-->>-C: summary
+        C->>M: saveSnapshot(cur)
+        C-->>GUI: summary
+        GUI-->>R: "What changed" panel
+    end
+    deactivate M
+    deactivate C
+    deactivate GUI

@@ -1,0 +1,30 @@
+classDiagram
+    direction TB
+    class StrategyTaxonomy {
+        -root: StrategyNode
+        +seedRoots() StrategyNode
+        +getRoot() StrategyNode
+    }
+    class StrategyNode {
+        -name: String
+        -mainIdea: String
+        -ownApproach: Boolean
+        -children: List~StrategyNode~
+        -papers: List~PaperAnalysis~
+        +add(child: StrategyNode)
+        +remove(child: StrategyNode)
+        +getChildren() List~StrategyNode~
+        +paperCount() int
+        +isLeaf() Boolean
+    }
+    class PaperAnalysis
+    class ResearchConsultantAgent {
+        +buildLandscape(items: List~PaperAnalysis~, p: ProjectProfile) StrategyNode
+        +summarizeBranch(n: StrategyNode) String
+    }
+    StrategyTaxonomy "1" *-- "1" StrategyNode : root
+    StrategyNode "1" o-- "0..*" StrategyNode : children
+    StrategyNode "1" o-- "0..*" PaperAnalysis
+    ResearchConsultantAgent ..> StrategyNode : builds and walks
+    note for StrategyNode "COMPONENT, COMPOSITE and LEAF in one type.<br/>children empty means leaf, so paperCount() and<br/>summarizeBranch() recurse to any depth<br/>without testing which kind a node is."
+    note for StrategyTaxonomy "CLIENT - seeds the fixed roots"

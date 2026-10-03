@@ -1,0 +1,30 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant M as ProjectMemory
+
+    R->>+GUI: enters question, datasets, models, metrics
+    R->>GUI: clicks Save
+    GUI->>+C: saveProfile(p: ProjectProfile)
+    C->>C: validate required fields
+    alt a required field is empty
+        C-->>GUI: ValidationError(field)
+        GUI-->>R: inline error, nothing persisted
+    else all fields valid
+        C->>+M: saveProfile(p)
+        alt write fails
+            M-->>C: StorageError
+            C-->>GUI: error
+            GUI-->>R: error shown, previous profile intact
+        else stored
+            M-->>C: ok
+            C-->>GUI: saved profile
+            GUI->>GUI: showDashboard()
+            GUI-->>R: dashboard shows updated profile
+        end
+        deactivate M
+    end
+    deactivate C
+    deactivate GUI

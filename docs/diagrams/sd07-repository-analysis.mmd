@@ -1,0 +1,55 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as RepositoryAnalysisAgent
+    participant T as ToolManager
+    participant G as GitHubClient
+    participant L as LLMClient
+
+    R->>+GUI: clicks "Check code" on a paper
+    GUI->>+C: checkRepository(a: PaperAnalysis)
+    alt paper has no repository URL
+        C-->>GUI: no repository linked
+        GUI-->>R: stated plainly, no call made
+    else repoUrl present
+        C->>+A: run(repoUrl)
+        A->>A: plan(repoUrl)
+        A->>+T: fetchRepo(url)
+        T->>+G: fetchRepo(url)
+        Note right of G: Read-only metadata.<br/>Repository code is never<br/>downloaded and never executed.
+        alt repository is private or missing
+            G-->>T: NotAccessible(reason)
+            T-->>A: NotAccessible(reason)
+            A-->>C: inaccessible + reason
+            C-->>GUI: reason shown
+            GUI-->>R: "private repository" or "not found"
+        else API rate limit reached
+            G-->>T: RateLimited(retryAfter)
+            T-->>A: RateLimited(retryAfter)
+            A-->>C: try again later
+            C-->>GUI: retry time shown
+            GUI-->>R: rate limited, retry suggested
+        else metadata returned
+            G-->>T: RepoMetadata
+            T-->>A: RepoMetadata
+            A->>+L: generate(summarise reproducibility)
+            alt LLM unavailable
+                L-->>A: ServiceError
+                A-->>C: raw metadata only
+            else summary returned
+                L-->>A: readme quality, datasets, eval scripts
+                A->>A: summarize(result)
+                A-->>C: RepoSummary
+            end
+            deactivate L
+            C-->>GUI: RepoSummary
+            GUI-->>R: code availability and reusability
+        end
+        deactivate G
+        deactivate T
+        deactivate A
+    end
+    deactivate C
+    deactivate GUI

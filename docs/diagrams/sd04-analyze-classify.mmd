@@ -1,0 +1,52 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as PaperAnalysisAgent
+    participant T as ToolManager
+    participant P as PaperParser
+    participant L as LLMClient
+    participant TX as StrategyTaxonomy
+    participant M as ProjectMemory
+
+    R->>+GUI: selects a paper, clicks "Analyze"
+    GUI->>+C: analyzePaper(p: PaperRecord)
+    C->>+A: run(p)
+    A->>A: plan(p)
+    Note right of A: Template Method - the fixed run()<br/>order is defined once in Agent
+    A->>+T: parsePaper(p)
+    T->>+P: parse(p)
+    alt PDF cannot be parsed
+        P-->>T: ParseError
+        T-->>A: ParseError
+        A->>A: fall back to the abstract, if present
+        opt no abstract either
+            A-->>C: cannot analyse this paper
+            C-->>GUI: paper flagged unparseable
+            GUI-->>R: message, nothing stored
+        end
+    else text extracted
+        P-->>T: paper text
+        T-->>A: paper text
+    end
+    deactivate P
+    deactivate T
+    A->>+L: generate(extraction prompt)
+    L-->>-A: problem, method, dataset, metrics, results, limitations
+    opt only some fields extracted
+        A->>A: mark missing fields unknown
+    end
+    A->>A: classify(a: PaperAnalysis)
+    A->>+TX: match(method)
+    TX-->>-A: strategy tags
+    opt confidence is low
+        A->>A: mark tag "uncertain"
+    end
+    A->>A: summarize(result)
+    A-->>-C: PaperAnalysis
+    C->>+M: addPaperAnalysis(a)
+    M-->>-C: stored
+    C-->>-GUI: PaperAnalysis
+    GUI->>GUI: showPaperDetail(a)
+    GUI-->>-R: structured analysis and strategy tags

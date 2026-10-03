@@ -1,0 +1,25 @@
+classDiagram
+    direction LR
+    class PaperDiscoveryAgent {
+        -listeners: List~PaperFeedListener~
+        +addListener(l: PaperFeedListener)
+        +notifyListeners(p: PaperRecord)
+    }
+    class PaperFeedListener {
+        <<interface>>
+        +onNewPaper(p: PaperRecord)
+    }
+    class PaperFeedPanel {
+        +onNewPaper(p: PaperRecord)
+    }
+    class DigestBuilder {
+        +onNewPaper(p: PaperRecord)
+        +buildDigest() Digest
+    }
+    PaperFeedListener <|.. PaperFeedPanel
+    PaperFeedListener <|.. DigestBuilder
+    PaperDiscoveryAgent "1" --> "0..*" PaperFeedListener
+    note for PaperDiscoveryAgent "SUBJECT - broadcasts once,<br/>knows only the interface"
+    note for PaperFeedListener "OBSERVER"
+    note for PaperFeedPanel "CONCRETE OBSERVER - redraws the feed"
+    note for DigestBuilder "CONCRETE OBSERVER - accumulates<br/>papers for the next digest"

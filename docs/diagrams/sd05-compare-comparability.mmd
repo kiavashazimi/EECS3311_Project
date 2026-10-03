@@ -1,0 +1,45 @@
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as ResearchConsultantAgent
+    participant K as ComparabilityChecker
+    participant M as ProjectMemory
+    participant L as LLMClient
+
+    R->>+GUI: clicks "Compare to my project"
+    GUI->>+C: comparePaper(a: PaperAnalysis)
+    C->>+M: getProfile()
+    M-->>-C: ProjectProfile
+    alt profile incomplete
+        C-->>GUI: lists the missing fields
+        GUI-->>R: "complete these fields first" - no guessing
+    else profile usable
+        C->>+A: compare(a, p)
+        Note over A,K: UC06 is included here - a comparison<br/>never skips the comparability check
+        A->>+K: isComparable(a, p)
+        K->>K: compare dataset, metric and split
+        K-->>A: true / false / cannot determine
+        A->>K: findMismatches(a, p)
+        K-->>-A: list of specific mismatches
+        Note right of K: Deterministic - no LLM involved.<br/>Unknown fields never count as a match.
+        A->>+L: generate(explain this verdict in context)
+        alt LLM unavailable
+            L-->>A: ServiceError
+            A-->>C: verdict + raw mismatches, no narrative
+            C-->>GUI: badge only
+            GUI-->>R: verdict shown, explanation unavailable
+        else explanation returned
+            L-->>A: narrative explanation
+            A->>A: summarize(result)
+            A-->>C: ComparisonResult
+            C-->>GUI: ComparisonResult
+            GUI->>GUI: showComparison(r)
+            GUI-->>R: similarities, differences, comparability badge
+        end
+        deactivate L
+        deactivate A
+    end
+    deactivate C
+    deactivate GUI
