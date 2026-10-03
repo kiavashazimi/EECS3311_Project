@@ -1,0 +1,262 @@
+classDiagram
+    direction TB
+
+    %% ---------- Boundary: GUI + CLI (Facade clients) ----------
+    class MainGUI {
+        -controller: AppController
+        +showDashboard()
+        +showPaperFeed()
+    }
+    class CLI {
+        -controller: AppController
+        +run(args: String[])
+    }
+    class AppController {
+        -memory: ProjectMemory
+        -tools: ToolManager
+        +saveProfile(p: ProjectProfile)
+        +importProjectContext(path: String) ContextSnapshot
+        +discoverPapers() List~PaperRecord~
+        +analyzePaper(p: PaperRecord) PaperAnalysis
+        +classifyPaper(a: PaperAnalysis) List~String~
+        +comparePaper(a: PaperAnalysis) ComparisonResult
+        +searchPriorWork(idea: String) List~PaperAnalysis~
+        +checkRepository(a: PaperAnalysis) RepoSummary
+        +summarizeProjectChanges() String
+        +ask(question: String) String
+        +buildDigest() Digest
+    }
+    MainGUI "1" --> "1" AppController
+    CLI "1" --> "1" AppController
+
+    %% ---------- Agents (Template Method) ----------
+    class Agent {
+        <<abstract>>
+        #tools: ToolManager
+        +run(input: Object) Object
+        #plan(input: Object) Plan
+        #executeTools(plan: Plan) Object
+        #summarize(result: Object) Object
+    }
+    class Plan {
+        -steps: List~String~
+        -toolCalls: List~String~
+        +addStep(s: String)
+        +getToolCalls() List~String~
+    }
+    class PaperDiscoveryAgent {
+        -listeners: List~PaperFeedListener~
+        +plan(input) Plan
+        +executeTools(plan) Object
+        +summarize(result) Object
+        +addListener(l: PaperFeedListener)
+        +notifyListeners(p: PaperRecord)
+    }
+    class PaperAnalysisAgent {
+        -taxonomy: StrategyTaxonomy
+        +plan(input) Plan
+        +executeTools(plan) Object
+        +summarize(result) Object
+        +classify(a: PaperAnalysis) List~String~
+    }
+    class ResearchConsultantAgent {
+        -checker: ComparabilityChecker
+        +plan(input) Plan
+        +executeTools(plan) Object
+        +summarize(result) Object
+        +compare(a: PaperAnalysis, p: ProjectProfile) ComparisonResult
+    }
+    class ProjectContextAgent {
+        -provider: ProjectContextProvider
+        +plan(input) Plan
+        +executeTools(plan) Object
+        +summarize(result) Object
+        +summarizeChanges(old: ContextSnapshot, cur: ContextSnapshot) String
+    }
+    class RepositoryAnalysisAgent {
+        +plan(input) Plan
+        +executeTools(plan) Object
+        +summarize(result) Object
+    }
+    Agent <|-- PaperDiscoveryAgent
+    Agent <|-- PaperAnalysisAgent
+    Agent <|-- ResearchConsultantAgent
+    Agent <|-- ProjectContextAgent
+    Agent <|-- RepositoryAnalysisAgent
+    AppController "1" o-- "5" Agent
+    Agent ..> Plan : creates
+
+    %% ---------- Tool layer ----------
+    class ToolManager {
+        -literatureSource: LiteratureSource
+        -llm: LLMClient
+        -github: GitHubClient
+        -parser: PaperParser
+        +setLiteratureSource(s: LiteratureSource)
+        +search(query: String) List~PaperRecord~
+        +callLLM(prompt: String) String
+        +fetchRepo(url: String) RepoMetadata
+        +parsePaper(p: PaperRecord) String
+    }
+    AppController "1" *-- "1" ToolManager
+    Agent "0..*" --> "1" ToolManager
+
+    class LiteratureSource {
+        <<interface>>
+        +search(query: String) List~PaperRecord~
+    }
+    class ArxivSource {
+        +search(query: String) List~PaperRecord~
+    }
+    class SemanticScholarSource {
+        +search(query: String) List~PaperRecord~
+    }
+    LiteratureSource <|.. ArxivSource
+    LiteratureSource <|.. SemanticScholarSource
+    ToolManager "1" --> "1" LiteratureSource
+
+    class LLMClient {
+        <<interface>>
+        +generate(prompt: String) String
+    }
+    class ClaudeClient {
+        +generate(prompt: String) String
+    }
+    LLMClient <|.. ClaudeClient
+    ToolManager "1" --> "1" LLMClient
+
+    class GitHubClient {
+        +fetchRepo(url: String) RepoMetadata
+    }
+    class PaperParser {
+        +parse(p: PaperRecord) String
+    }
+    ToolManager "1" *-- "1" GitHubClient
+    ToolManager "1" *-- "1" PaperParser
+    GitHubClient ..> RepoMetadata : returns
+
+    %% ---------- Project context (Adapter) ----------
+    class ProjectContextProvider {
+        <<interface>>
+        +scan(path: String) ContextSnapshot
+    }
+    class FileBasedContextProvider {
+        +scan(path: String) ContextSnapshot
+    }
+    class ClaudeCodeContextProvider {
+        +scan(path: String) ContextSnapshot
+    }
+    ProjectContextProvider <|.. FileBasedContextProvider
+    ProjectContextProvider <|.. ClaudeCodeContextProvider
+    ProjectContextAgent "1" --> "1" ProjectContextProvider
+    ProjectContextProvider ..> ContextSnapshot : returns
+
+    %% ---------- Deterministic domain services ----------
+    class ComparabilityChecker {
+        +isComparable(a: PaperAnalysis, p: ProjectProfile) Boolean
+        +findMismatches(a: PaperAnalysis, p: ProjectProfile) List~String~
+    }
+    class StrategyTaxonomy {
+        -knownStrategies: List~String~
+        +match(method: String) List~String~
+        +isKnown(tag: String) Boolean
+    }
+    ResearchConsultantAgent "1" --> "1" ComparabilityChecker
+    PaperAnalysisAgent "1" --> "1" StrategyTaxonomy
+
+    %% ---------- Memory (Singleton) ----------
+    class ProjectMemory {
+        <<Singleton>>
+        -instance: ProjectMemory
+        -profile: ProjectProfile
+        -papers: List~PaperAnalysis~
+        -lastSnapshot: ContextSnapshot
+        +getInstance() ProjectMemory
+        +saveProfile(p: ProjectProfile)
+        +getProfile() ProjectProfile
+        +addPaperAnalysis(a: PaperAnalysis)
+        +getPaperAnalyses() List~PaperAnalysis~
+        +saveSnapshot(s: ContextSnapshot)
+        +getLastSnapshot() ContextSnapshot
+    }
+    AppController "1" --> "1" ProjectMemory
+
+    %% ---------- Domain / data classes ----------
+    class ProjectProfile {
+        -researchQuestion: String
+        -datasets: List~String~
+        -models: List~String~
+        -metrics: List~String~
+        -ownResults: List~String~
+    }
+    class PaperRecord {
+        -title: String
+        -venue: String
+        -date: String
+        -repoUrl: String
+    }
+    class PaperAnalysis {
+        -paper: PaperRecord
+        -problem: String
+        -method: String
+        -dataset: String
+        -metrics: List~String~
+        -results: String
+        -limitations: String
+        -strategyTags: List~String~
+    }
+    class ComparisonResult {
+        -similarities: List~String~
+        -differences: List~String~
+        -comparable: Boolean
+        -comparabilityNote: String
+    }
+    class ContextSnapshot {
+        -scannedAt: String
+        -recentCommits: List~String~
+        -configEntries: List~String~
+        -resultFiles: List~String~
+    }
+    class RepoMetadata {
+        -url: String
+        -hasReadme: Boolean
+        -license: String
+        -topLevelFiles: List~String~
+    }
+    class RepoSummary {
+        -codeAvailable: Boolean
+        -readmeQuality: String
+        -license: String
+        -hasDatasets: Boolean
+        -hasEvalScripts: Boolean
+    }
+    class Digest {
+        -generatedAt: String
+        -newPapers: List~PaperRecord~
+        -projectChanges: String
+        -summaryText: String
+    }
+    ProjectMemory "1" *-- "1" ProjectProfile
+    ProjectMemory "1" *-- "0..*" PaperAnalysis
+    ProjectMemory "1" *-- "0..1" ContextSnapshot
+    PaperAnalysis "1" --> "1" PaperRecord
+    ResearchConsultantAgent ..> ComparisonResult : creates
+    RepositoryAnalysisAgent ..> RepoSummary : creates
+
+    %% ---------- Observer ----------
+    class PaperFeedListener {
+        <<interface>>
+        +onNewPaper(p: PaperRecord)
+    }
+    class PaperFeedPanel {
+        +onNewPaper(p: PaperRecord)
+    }
+    class DigestBuilder {
+        +onNewPaper(p: PaperRecord)
+        +buildDigest() Digest
+    }
+    PaperFeedListener <|.. PaperFeedPanel
+    PaperFeedListener <|.. DigestBuilder
+    PaperDiscoveryAgent "1" --> "0..*" PaperFeedListener
+    DigestBuilder ..> Digest : creates
+    Digest "1" o-- "0..*" PaperRecord
