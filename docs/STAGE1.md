@@ -1,6 +1,27 @@
 # Stage 1 Report — Project-Aware Research Consultant
 
-Draft for the Stage 1 deliverables in `stage1.pdf`.
+**EECS 3311 — Software Design · Fall 2026 · York University**
+
+A design report for a project-aware AI research assistant: a desktop application that
+keeps a structured memory of a researcher's own project and uses it to judge which new
+papers matter, how they compare, and whether their results are genuinely comparable.
+
+**Contents**
+
+| | Section |
+|---|---|
+| 1 | [Project Overview](#1-project-overview) — problem, users, agent, model, architecture |
+| 2 | [Feature Specifications](#2-feature-specifications) — F01–F13 |
+| 3 | [UML Class Diagram](#3-uml-class-diagram) |
+| 4 | [Design Pattern Explanations](#4-design-pattern-explanations) — seven patterns |
+| 5 | [Use-Case Diagram](#5-use-case-diagram) |
+| 6 | [Use-Case Descriptions](#6-use-case-descriptions) — UC01–UC12 |
+| 7 | [Sequence Diagrams](#7-sequence-diagrams) — SD01–SD09 |
+| 8 | [Feature-to-Design Traceability](#8-feature-to-design-traceability) |
+| 9 | [How Each Feature Is Realized](#9-how-each-feature-is-realized) |
+
+Diagram sources are in [`diagrams/`](diagrams/); each diagram below also links a rendered
+image.
 
 ## 1. Project Overview
 
@@ -18,7 +39,9 @@ Draft for the Stage 1 deliverables in `stage1.pdf`.
 
 ## 2. Feature Specifications
 
-Format per `stage1.pdf`: ID/Name, Description, GUI interaction, Input, Output, AI involvement, Workflow, Error/alternative cases.
+Each feature below is specified by: identifier and name, description, how the user
+interacts with it through the GUI, its input, its output, whether it is deterministic,
+AI-driven or hybrid, its workflow, and the error and alternative cases it must handle.
 
 ### F01 — Project Profile Setup
 - **Description:** Create and edit the researcher's project profile: research question, datasets, models, metrics, current results.
@@ -143,13 +166,13 @@ Format per `stage1.pdf`: ID/Name, Description, GUI interaction, Input, Output, A
 
 ## 3. UML Class Diagram
 
-Rendered automatically by GitHub from this fenced block once committed to a
-`.md` file. Source also kept separately at `diagrams/class-diagram.mmd`, with a
-verified render at `diagrams/class-diagram-render.png`.
+The structure of the system: its classes and interfaces, their important attributes and
+methods, and the relationships between them. Source: [`diagrams/class-diagram.mmd`](diagrams/class-diagram.mmd).
 
-**Notation note.** Mermaid cannot render a class name in italics, so the abstract class
-`Agent` is marked with the `«abstract»` stereotype instead. Each pattern is also labelled
-with an attached note, and section 4 repeats every pattern as its own focused diagram.
+**On notation.** The abstract class `Agent` is marked with the `«abstract»` stereotype
+rather than italics, which the diagram tool cannot produce. Each design pattern is
+labelled with an attached note, and section 4 shows every pattern again as its own
+focused diagram.
 
 **Reading the relationships.** Filled diamonds (composition) mark ownership with
 a shared lifetime: `ProjectMemory` owns the profile, the stored analyses and the
@@ -470,7 +493,7 @@ classDiagram
     note for StrategyNode "Composite - a node with no children is a leaf,<br/>so one recursive walk handles any depth"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/class-diagram-render.png).*
+*Also available as a [rendered image](diagrams/class-diagram-render.png).*
 
 ## 4. Design Pattern Explanations
 
@@ -510,7 +533,7 @@ classDiagram
     note for Agent "Subsystem"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-facade.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-facade.png).*
 
 *Source: `diagrams/patterns/pattern-facade.mmd`*
 
@@ -575,7 +598,7 @@ classDiagram
     note for PaperDiscoveryAgent "CONCRETE CLASS - supplies the steps,<br/>never changes their order"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-template-method.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-template-method.png).*
 
 *Source: `diagrams/patterns/pattern-template-method.mmd`*
 
@@ -624,7 +647,7 @@ classDiagram
     note for SemanticScholarSource "CONCRETE STRATEGY"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-strategy.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-strategy.png).*
 
 *Source: `diagrams/patterns/pattern-strategy.mmd`*
 
@@ -686,7 +709,7 @@ classDiagram
     note for FileBasedContextProvider "ADAPTER - reads Git, configs, results"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-adapter.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-adapter.png).*
 
 *Source: `diagrams/patterns/pattern-adapter.mmd`*
 
@@ -742,7 +765,7 @@ classDiagram
     note for DigestBuilder "CONCRETE OBSERVER - accumulates<br/>papers for the next digest"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-observer.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-observer.png).*
 
 *Source: `diagrams/patterns/pattern-observer.mmd`*
 
@@ -787,7 +810,7 @@ classDiagram
     note for ProjectMemory "SINGLETON. Private constructor, static instance,<br/>getInstance() is the only way in.<br/>One shared project state - the GUI and the CLI<br/>can never drift out of sync."
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-singleton.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-singleton.png).*
 
 *Source: `diagrams/patterns/pattern-singleton.mmd`*
 
@@ -837,7 +860,7 @@ classDiagram
     note for StrategyTaxonomy "CLIENT - seeds the fixed roots"
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/patterns/pattern-composite.png).*
+*Also available as a [rendered image](diagrams/patterns/pattern-composite.png).*
 
 *Source: `diagrams/patterns/pattern-composite.mmd`*
 
@@ -862,12 +885,11 @@ classDiagram
 
 ## 5. Use-Case Diagram
 
-Source: `diagrams/use-case-diagram.puml`. Render: `diagrams/use-case-render.png`
-(PlantUML — GitHub does not render `.puml`, so the PNG is the diagram of record).
+Source: [`diagrams/use-case-diagram.puml`](diagrams/use-case-diagram.puml).
 
 ![Use-case diagram](diagrams/use-case-render.png)
 
-**Actors.** One primary actor and four supporting actors, per `stage1.pdf` §2.2:
+**Actors.** One primary actor and four supporting actors:
 
 | Actor | Kind | Role |
 |---|---|---|
@@ -883,10 +905,9 @@ actor that never appears in any scenario.
 
 **Relationships.** Only one `<<include>>` is used — UC05 always runs UC06, because a
 comparison that does not establish whether results are comparable is exactly the failure
-mode this project exists to prevent. No `<<extend>>` is used. Following the same
-reasoning the Stage 1 instructions apply to design patterns, include/extend were not
-added to decorate the diagram; the remaining use cases are independent and are related
-only by their preconditions.
+mode this project exists to prevent. No `<<extend>>` is used. These relationships
+were applied only where one genuinely holds: the remaining use cases are independent and
+are related only by their preconditions.
 
 **Coverage.** Twelve use cases cover all thirteen features. UC04 covers F04 and F05
 (classification is part of analysing a paper), and the remaining use cases map one-to-one.
@@ -1124,16 +1145,15 @@ UC01 is the only use case with no LLM Service association — it is fully determ
 
 ## 7. Sequence Diagrams
 
-Nine diagrams cover all thirteen features. Per `stage1.pdf` §2.3 a diagram is shared only
-where features genuinely have the same interaction structure — F04/F05, F06/F07, F08/F11
-and F02/F10 are merged on that basis, while everything else is separate.
+Nine diagrams cover all thirteen features. A diagram is shared only where features have
+the same interaction structure — F02/F10, F04/F05, F06/F07 and F08/F11 are merged on that
+basis, while everything else is separate.
 
 Every diagram runs the full chain from the actor through `MainGUI` and `AppController` to
-an agent, `ToolManager` and the external tool, with return values shown. Each carries at
-least one `alt` fragment for the failure the feature specification names, because
-`Project-Instruction.pdf` §5 explicitly rules out collapsing these to
-`User -> Agent -> LLM`. All participants and messages use classes and methods declared in
-the class diagram in section 3.
+an agent, `ToolManager` and the external tool, with return values and activation bars
+shown. Each carries at least one `alt` fragment for the failure its feature specification
+names. All participants and messages use classes and methods declared in the class diagram
+in section 3.
 
 | Diagram | Features | Use cases | What it demonstrates |
 |---|---|---|---|
@@ -1186,7 +1206,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd01-profile-setup.png).*
+*Also available as a [rendered image](diagrams/sd01-profile-setup.png).*
 
 ### SD02 — Import Project Context and Review Changes
 
@@ -1266,7 +1286,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd02-project-context.png).*
+*Also available as a [rendered image](diagrams/sd02-project-context.png).*
 
 ### SD03 — Discover New Papers
 
@@ -1340,7 +1360,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd03-discover-papers.png).*
+*Also available as a [rendered image](diagrams/sd03-discover-papers.png).*
 
 ### SD04 — Analyze and Classify a Paper
 
@@ -1403,7 +1423,7 @@ sequenceDiagram
     GUI-->>-R: structured analysis and strategy tags
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd04-analyze-classify.png).*
+*Also available as a [rendered image](diagrams/sd04-analyze-classify.png).*
 
 ### SD05 — Compare and Check Comparability
 
@@ -1459,7 +1479,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd05-compare-comparability.png).*
+*Also available as a [rendered image](diagrams/sd05-compare-comparability.png).*
 
 ### SD06 — Grounded Answering
 
@@ -1532,7 +1552,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd06-grounded-answering.png).*
+*Also available as a [rendered image](diagrams/sd06-grounded-answering.png).*
 
 ### SD07 — Repository Analysis
 
@@ -1598,7 +1618,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd07-repository-analysis.png).*
+*Also available as a [rendered image](diagrams/sd07-repository-analysis.png).*
 
 ### SD08 — Generate Digest
 
@@ -1654,7 +1674,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd08-digest.png).*
+*Also available as a [rendered image](diagrams/sd08-digest.png).*
 
 ### SD09 — Build Solution Landscape
 
@@ -1731,7 +1751,7 @@ sequenceDiagram
     deactivate GUI
 ```
 
-*Diagram not rendering? See the [rendered image](diagrams/sd09-solution-landscape.png).*
+*Also available as a [rendered image](diagrams/sd09-solution-landscape.png).*
 
 ## 8. Feature-to-Design Traceability
 
@@ -1772,8 +1792,7 @@ each row is the one that actually shapes that feature.
 
 For each feature: the use case that describes it, the sequence diagram that shows it, the
 classes with their responsibility in that feature, the methods that carry it, and how they
-collaborate at runtime. Format follows the `F01 — Generate a Travel Plan` example in
-`stage1.pdf`.
+collaborate at runtime.
 
 ### F01 — Project Profile Setup
 **Use case:** UC01 · **Sequence diagram:** SD01
@@ -2008,9 +2027,9 @@ comparability verdict in F07 would be checked against a stale description of the
 relevant profile, analyses and latest snapshot, and only then prompts
 `LLMClient.generate()` to answer *using that context alone*. The answer is shown with
 references to the records it used, so every claim can be traced back. If nothing relevant is
-stored the agent says so rather than answering from the model's general knowledge. That
-retrieve-then-answer ordering is what separates this from a chatbot wrapper, which
-`Project-Instruction.pdf` §3.2 rules out as insufficient.
+stored the agent says so rather than answering from the model's general knowledge. That retrieve-then-answer ordering is
+what separates this from a thin wrapper around a language model: the answer is constrained
+by stored project data rather than produced from the model's own knowledge.
 
 ### F12 — Weekly Digest
 **Use case:** UC11 · **Sequence diagram:** SD08
