@@ -1,0 +1,66 @@
+@startuml
+title Project-Aware Research Consultant — Use Case Diagram
+
+left to right direction
+skinparam linetype ortho
+
+actor "Researcher" as R
+
+rectangle "Project-Aware Research Consultant" {
+  usecase "UC01\nSet Up Project Profile" as UC01
+  usecase "UC02\nImport Project Context" as UC02
+  usecase "UC03\nDiscover New Papers" as UC03
+  usecase "UC04\nAnalyze and Classify a Paper" as UC04
+  usecase "UC05\nCompare Paper to Own Project" as UC05
+  usecase "UC06\nCheck Result Comparability" as UC06
+  usecase "UC07\nSearch for Prior Work" as UC07
+  usecase "UC08\nInspect Paper Repository" as UC08
+  usecase "UC09\nReview Project Changes" as UC09
+  usecase "UC10\nAsk a Project-Aware Question" as UC10
+  usecase "UC11\nGenerate Digest" as UC11
+  usecase "UC12\nExplore Solution Landscape" as UC12
+}
+
+actor "Literature API" as LIT
+actor "LLM Service" as LLM
+actor "GitHub API" as GH
+actor "Local Project Directory" as DIR
+
+' --- primary actor ---
+R --> UC01
+R --> UC02
+R --> UC03
+R --> UC04
+R --> UC05
+R --> UC07
+R --> UC08
+R --> UC09
+R --> UC10
+R --> UC11
+R --> UC12
+
+' --- relationships between use cases ---
+UC05 ..> UC06 : <<include>>
+
+' --- supporting actors ---
+UC02 --> DIR
+UC09 --> DIR
+
+UC03 --> LIT
+UC07 --> LIT
+
+UC08 --> GH
+
+UC02 --> LLM
+UC03 --> LLM
+UC04 --> LLM
+UC05 --> LLM
+UC06 --> LLM
+UC07 --> LLM
+UC08 --> LLM
+UC09 --> LLM
+UC10 --> LLM
+UC11 --> LLM
+UC12 --> LLM
+
+@enduml

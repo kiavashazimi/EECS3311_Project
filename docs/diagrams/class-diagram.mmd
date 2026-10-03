@@ -6,6 +6,7 @@ classDiagram
         -controller: AppController
         +showDashboard()
         +showPaperFeed()
+        +showSolutionLandscape(root: StrategyNode)
     }
     class CLI {
         -controller: AppController
@@ -25,6 +26,7 @@ classDiagram
         +summarizeProjectChanges() String
         +ask(question: String) String
         +buildDigest() Digest
+        +buildSolutionLandscape() StrategyNode
     }
     MainGUI "1" --> "1" AppController
     CLI "1" --> "1" AppController
@@ -65,6 +67,8 @@ classDiagram
         +executeTools(plan) Object
         +summarize(result) Object
         +compare(a: PaperAnalysis, p: ProjectProfile) ComparisonResult
+        +buildLandscape(items: List~PaperAnalysis~, p: ProjectProfile) StrategyNode
+        +summarizeBranch(n: StrategyNode) String
     }
     class ProjectContextAgent {
         -provider: ProjectContextProvider
@@ -158,9 +162,28 @@ classDiagram
     }
     class StrategyTaxonomy {
         -knownStrategies: List~String~
+        -root: StrategyNode
         +match(method: String) List~String~
         +isKnown(tag: String) Boolean
+        +seedRoots() StrategyNode
+        +getRoot() StrategyNode
     }
+    class StrategyNode {
+        -name: String
+        -mainIdea: String
+        -ownApproach: Boolean
+        -children: List~StrategyNode~
+        -papers: List~PaperAnalysis~
+        +add(child: StrategyNode)
+        +remove(child: StrategyNode)
+        +getChildren() List~StrategyNode~
+        +paperCount() int
+        +isLeaf() Boolean
+    }
+    StrategyTaxonomy "1" *-- "1" StrategyNode : root
+    StrategyNode "1" o-- "0..*" StrategyNode : children
+    StrategyNode "1" o-- "0..*" PaperAnalysis
+    ResearchConsultantAgent ..> StrategyNode : builds
     ResearchConsultantAgent "1" --> "1" ComparabilityChecker
     PaperAnalysisAgent "1" --> "1" StrategyTaxonomy
 
@@ -171,6 +194,7 @@ classDiagram
         -profile: ProjectProfile
         -papers: List~PaperAnalysis~
         -lastSnapshot: ContextSnapshot
+        -landscape: StrategyNode
         +getInstance() ProjectMemory
         +saveProfile(p: ProjectProfile)
         +getProfile() ProjectProfile
@@ -178,6 +202,8 @@ classDiagram
         +getPaperAnalyses() List~PaperAnalysis~
         +saveSnapshot(s: ContextSnapshot)
         +getLastSnapshot() ContextSnapshot
+        +saveLandscape(root: StrategyNode)
+        +getLandscape() StrategyNode
     }
     AppController "1" --> "1" ProjectMemory
 
@@ -239,6 +265,7 @@ classDiagram
     ProjectMemory "1" *-- "1" ProjectProfile
     ProjectMemory "1" *-- "0..*" PaperAnalysis
     ProjectMemory "1" *-- "0..1" ContextSnapshot
+    ProjectMemory "1" *-- "0..1" StrategyNode
     PaperAnalysis "1" --> "1" PaperRecord
     ResearchConsultantAgent ..> ComparisonResult : creates
     RepositoryAnalysisAgent ..> RepoSummary : creates
@@ -254,6 +281,7 @@ classDiagram
     class DigestBuilder {
         +onNewPaper(p: PaperRecord)
         +buildDigest() Digest
+        +buildSolutionLandscape() StrategyNode
     }
     PaperFeedListener <|.. PaperFeedPanel
     PaperFeedListener <|.. DigestBuilder

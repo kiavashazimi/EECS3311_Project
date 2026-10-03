@@ -12,7 +12,7 @@ Draft for the Stage 1 deliverables in `stage1.pdf`. Review and edit before copyi
 
 **Why an agent.** This requires multi-step reasoning (retrieve → extract → compare → judge relevance), tool use (literature APIs, GitHub, local file reading), and persistent memory across sessions — a single LLM call cannot do this; it needs planning and sequenced tool use.
 
-**AI/LLM model(s).** An LLM API (e.g., a Claude or GPT model) used for the agents' reasoning; swappable behind a thin provider interface.
+**AI/LLM model(s).** Claude (Anthropic Messages API) is the planned model for all agent reasoning — extraction, classification, comparison and summarisation. It is reached only through the `LLMClient` interface (`ClaudeClient` is the concrete adapter), so a different provider can be substituted without touching any agent. No model is called directly by the GUI, the CLI or the deterministic services.
 
 **Architecture.** A JavaFX desktop GUI and a CLI both sit on top of a shared service/agent layer. Agents (Paper Discovery, Paper Analysis, Research Consultant, Project Context, Repository Analysis) reason about which tools to invoke; the tools themselves (literature API client, GitHub client, local file reader, project-memory store) are deterministic services the agents call through a restricted `ToolManager`.
 
@@ -128,6 +128,15 @@ Format per `stage1.pdf`: ID/Name, Description, GUI interaction, Input, Output, A
 - **Workflow:** Scheduled/triggered job pulls recent F03/F04/F10 results and composes the digest.
 - **Errors:** Nothing new to report is shown explicitly, not an empty/broken-looking screen.
 
+### F13 — Solution Landscape
+- **Description:** Build and browse a hierarchical map of the solution approaches found across the analysed papers, with a synthesised "main idea" for each branch and a marker showing where the researcher's own approach sits.
+- **GUI interaction:** A "Strategies" view — the taxonomy tree on the left, the selected branch's main idea, its sibling contrast and its papers on the right. A "Rebuild" action refreshes it.
+- **Input:** The stored `PaperAnalysis` records (F04/F05 output) and the project profile.
+- **Output:** A tree of `StrategyNode`s with per-branch summaries and paper counts, with the branch matching the researcher's own method flagged.
+- **AI involvement:** Hybrid — the fixed top-level categories and all tree traversal are deterministic; proposing sub-branches, placing papers and writing branch summaries are AI.
+- **Workflow:** `StrategyTaxonomy.seedRoots()` creates the fixed top-level categories → `ResearchConsultantAgent.buildLandscape()` groups the analyses into proposed sub-branches beneath them → `summarizeBranch()` writes each branch's main idea → the branch matching the profile is flagged → the tree is stored in `ProjectMemory`.
+- **Errors:** Too few analysed papers to derive sub-branches — the seeded roots are shown with that stated explicitly. A paper that fits no branch is placed under an explicit "Unclassified" node rather than forced into the nearest one. If the LLM is unavailable the tree is still built from the fixed roots and the stored strategy tags, with branch summaries marked unavailable.
+
 ## 3. UML Class Diagram
 
 Rendered automatically by GitHub from this fenced block once committed to a
@@ -153,6 +162,7 @@ classDiagram
         -controller: AppController
         +showDashboard()
         +showPaperFeed()
+        +showSolutionLandscape(root: StrategyNode)
     }
     class CLI {
         -controller: AppController
@@ -172,6 +182,7 @@ classDiagram
         +summarizeProjectChanges() String
         +ask(question: String) String
         +buildDigest() Digest
+        +buildSolutionLandscape() StrategyNode
     }
     MainGUI "1" --> "1" AppController
     CLI "1" --> "1" AppController
@@ -212,6 +223,8 @@ classDiagram
         +executeTools(plan) Object
         +summarize(result) Object
         +compare(a: PaperAnalysis, p: ProjectProfile) ComparisonResult
+        +buildLandscape(items: List~PaperAnalysis~, p: ProjectProfile) StrategyNode
+        +summarizeBranch(n: StrategyNode) String
     }
     class ProjectContextAgent {
         -provider: ProjectContextProvider
@@ -305,9 +318,28 @@ classDiagram
     }
     class StrategyTaxonomy {
         -knownStrategies: List~String~
+        -root: StrategyNode
         +match(method: String) List~String~
         +isKnown(tag: String) Boolean
+        +seedRoots() StrategyNode
+        +getRoot() StrategyNode
     }
+    class StrategyNode {
+        -name: String
+        -mainIdea: String
+        -ownApproach: Boolean
+        -children: List~StrategyNode~
+        -papers: List~PaperAnalysis~
+        +add(child: StrategyNode)
+        +remove(child: StrategyNode)
+        +getChildren() List~StrategyNode~
+        +paperCount() int
+        +isLeaf() Boolean
+    }
+    StrategyTaxonomy "1" *-- "1" StrategyNode : root
+    StrategyNode "1" o-- "0..*" StrategyNode : children
+    StrategyNode "1" o-- "0..*" PaperAnalysis
+    ResearchConsultantAgent ..> StrategyNode : builds
     ResearchConsultantAgent "1" --> "1" ComparabilityChecker
     PaperAnalysisAgent "1" --> "1" StrategyTaxonomy
 
@@ -318,6 +350,7 @@ classDiagram
         -profile: ProjectProfile
         -papers: List~PaperAnalysis~
         -lastSnapshot: ContextSnapshot
+        -landscape: StrategyNode
         +getInstance() ProjectMemory
         +saveProfile(p: ProjectProfile)
         +getProfile() ProjectProfile
@@ -325,6 +358,8 @@ classDiagram
         +getPaperAnalyses() List~PaperAnalysis~
         +saveSnapshot(s: ContextSnapshot)
         +getLastSnapshot() ContextSnapshot
+        +saveLandscape(root: StrategyNode)
+        +getLandscape() StrategyNode
     }
     AppController "1" --> "1" ProjectMemory
 
@@ -386,6 +421,7 @@ classDiagram
     ProjectMemory "1" *-- "1" ProjectProfile
     ProjectMemory "1" *-- "0..*" PaperAnalysis
     ProjectMemory "1" *-- "0..1" ContextSnapshot
+    ProjectMemory "1" *-- "0..1" StrategyNode
     PaperAnalysis "1" --> "1" PaperRecord
     ResearchConsultantAgent ..> ComparisonResult : creates
     RepositoryAnalysisAgent ..> RepoSummary : creates
@@ -401,6 +437,7 @@ classDiagram
     class DigestBuilder {
         +onNewPaper(p: PaperRecord)
         +buildDigest() Digest
+        +buildSolutionLandscape() StrategyNode
     }
     PaperFeedListener <|.. PaperFeedPanel
     PaperFeedListener <|.. DigestBuilder
@@ -499,9 +536,289 @@ classDiagram
 - **Without it:** separate copies of project memory could drift out of sync,
   e.g. a paper analysis saved from the CLI not appearing in the GUI.
 
+### Composite — `StrategyNode`
+- **Problem addressed:** the solution landscape is a tree whose depth is not known in
+  advance, because the agent proposes sub-branches at runtime. A branch
+  ("retrieval-based") and a leaf ("chunk-free retrieval") must be counted, summarised,
+  rendered and compared in exactly the same way, even though a branch contains further
+  nodes while a leaf contains only papers.
+- **Participating classes:** `StrategyNode`, `StrategyTaxonomy`,
+  `ResearchConsultantAgent`, `PaperAnalysis`.
+- **Roles:** `StrategyNode` is both the component type and the composite — a node whose
+  `children` list is empty is simply a leaf, so no separate leaf class is needed.
+  `StrategyTaxonomy` seeds the fixed roots and owns the tree. `ResearchConsultantAgent`
+  builds and walks it recursively without knowing its depth. `PaperAnalysis` records hang
+  off the nodes as the payload.
+- **Why appropriate:** recursive operations — `paperCount()`, summarising a branch,
+  finding the branch that matches the researcher's own method — are written once and work
+  at any depth. The GUI renders the tree with one recursive routine.
+- **Without it:** branches and leaves would need separate types, every traversal would
+  test which kind it was holding, and a tree one level deeper than planned would force
+  changes through the agent and the GUI alike.
+
+## 5. Use-Case Diagram
+
+Source: `diagrams/use-case-diagram.puml`. Render: `diagrams/use-case-render.png`
+(PlantUML — GitHub does not render `.puml`, so the PNG is the diagram of record).
+
+![Use-case diagram](diagrams/use-case-render.png)
+
+**Actors.** One primary actor and four supporting actors, per `stage1.pdf` §2.2:
+
+| Actor | Kind | Role |
+|---|---|---|
+| Researcher | Primary (human) | Initiates every use case, through the GUI or the CLI |
+| Literature API | External service | arXiv / Semantic Scholar, behind `LiteratureSource` |
+| LLM Service | AI service | Claude, behind `LLMClient`; performs all agent reasoning |
+| GitHub API | External service | Read-only repository metadata, behind `GitHubClient` |
+| Local Project Directory | External resource | The researcher's own project tree, behind `ProjectContextProvider` |
+
+There is no administrator actor: the application is a single-researcher desktop tool with
+no accounts, no shared state and no privileged operations, so inventing one would add an
+actor that never appears in any scenario.
+
+**Relationships.** Only one `<<include>>` is used — UC05 always runs UC06, because a
+comparison that does not establish whether results are comparable is exactly the failure
+mode this project exists to prevent. No `<<extend>>` is used. Following the same
+reasoning the Stage 1 instructions apply to design patterns, include/extend were not
+added to decorate the diagram; the remaining use cases are independent and are related
+only by their preconditions.
+
+**Coverage.** Twelve use cases cover all thirteen features. UC04 covers F04 and F05
+(classification is part of analysing a paper), and the remaining use cases map one-to-one.
+UC01 is the only use case with no LLM Service association — it is fully deterministic.
+
+## 6. Use-Case Descriptions
+
+### UC01 — Set Up Project Profile
+- **Actors:** Researcher.
+- **Goal:** Record the research question, datasets, models, metrics and current results so later analysis can be judged against them.
+- **Preconditions:** The application is running.
+- **Trigger:** The researcher opens the profile editor, or runs the CLI `profile` command.
+- **Main success scenario:**
+  1. The researcher opens the profile form.
+  2. The system shows the stored profile, or an empty form on first use.
+  3. The researcher enters the research question, datasets, models, metrics and results.
+  4. The researcher saves.
+  5. `AppController.saveProfile()` validates the required fields.
+  6. `ProjectMemory` persists the profile.
+  7. The dashboard shows the updated profile.
+- **Alternative / exception flows:**
+  - 5a. A required field is empty — the field is flagged inline, nothing is persisted, and the researcher corrects and resubmits.
+  - 6a. The write fails — an error is shown and the previously stored profile is left intact.
+- **Postconditions:** The profile is in project memory and visible to every agent.
+- **Related features:** F01.
+
+### UC02 — Import Project Context
+- **Actors:** Researcher; Local Project Directory; LLM Service.
+- **Goal:** Load the live state of the researcher's own project into memory.
+- **Preconditions:** A profile exists (UC01); a readable local project directory.
+- **Trigger:** The researcher chooses "Import project" and picks a directory.
+- **Main success scenario:**
+  1. The researcher selects a directory.
+  2. `AppController.importProjectContext(path)` is called.
+  3. `ProjectContextAgent` asks `ProjectContextProvider` to scan the path.
+  4. The provider reads code, configuration, result files and Git history into a `ContextSnapshot`.
+  5. The agent sends the notable items to the LLM Service for a readable summary.
+  6. `ProjectMemory` stores the snapshot as the latest.
+  7. The imported facts and the summary are displayed.
+- **Alternative / exception flows:**
+  - 1a. The path is invalid or unreadable — reported, and nothing is stored.
+  - 4a. The directory is not a Git repository — the scan continues and Git-derived facts are marked unavailable rather than failing the import.
+  - 5a. The LLM Service is unavailable — the snapshot is still stored and the summary is marked unavailable with a retry offered.
+- **Postconditions:** A `ContextSnapshot` is stored as the latest snapshot.
+- **Related features:** F02.
+
+### UC03 — Discover New Papers
+- **Actors:** Researcher; Literature API; LLM Service.
+- **Goal:** Find papers that matter for this specific project.
+- **Preconditions:** A profile with a research question exists.
+- **Trigger:** The researcher chooses "Discover papers", or runs the CLI `discover` command.
+- **Main success scenario:**
+  1. The researcher triggers discovery.
+  2. `AppController.discoverPapers()` is called.
+  3. `PaperDiscoveryAgent` plans search queries from the profile.
+  4. `ToolManager.search()` delegates to the selected `LiteratureSource`.
+  5. The Literature API returns candidate `PaperRecord`s.
+  6. The agent judges relevance against the profile via the LLM Service and ranks the results.
+  7. The agent notifies every registered `PaperFeedListener`.
+  8. The feed shows the ranked papers with a relevance note each.
+- **Alternative / exception flows:**
+  - 4a. The Literature API fails or times out — the error is shown with a retry action, and previously discovered papers remain visible.
+  - 5a. The search returns nothing — an explicit "no new papers" state is shown rather than a blank feed.
+  - 6a. The LLM Service is unavailable — results are shown unranked and clearly labelled as unranked.
+- **Postconditions:** Candidate papers are in the feed and listeners have been notified.
+- **Related features:** F03.
+
+### UC04 — Analyze and Classify a Paper
+- **Actors:** Researcher; LLM Service.
+- **Goal:** Turn a paper into a structured record and tag the strategy it uses.
+- **Preconditions:** A paper is selected in the feed.
+- **Trigger:** The researcher chooses "Analyze" on that paper.
+- **Main success scenario:**
+  1. The researcher selects a paper and chooses Analyze.
+  2. `AppController.analyzePaper(p)` is called.
+  3. `PaperAnalysisAgent` obtains the text via `ToolManager.parsePaper()` and `PaperParser`.
+  4. The agent extracts problem, method, dataset, model, metrics, results and limitations via the LLM Service.
+  5. The agent classifies the strategy using `StrategyTaxonomy.match()`.
+  6. The resulting `PaperAnalysis` is stored in `ProjectMemory`.
+  7. The detail view shows the structured analysis and its strategy tags.
+- **Alternative / exception flows:**
+  - 3a. The PDF cannot be parsed — the paper is flagged; analysis falls back to the abstract if one is available, otherwise it stops with a message.
+  - 4a. Only some fields can be extracted — the record is still saved, with the missing fields marked unknown.
+  - 5a. Classification confidence is low — the tag is marked "uncertain" rather than asserted.
+- **Postconditions:** A `PaperAnalysis` is stored and tagged.
+- **Related features:** F04, F05.
+
+### UC05 — Compare Paper to Own Project
+- **Actors:** Researcher; LLM Service.
+- **Goal:** Explain how a paper's approach resembles or differs from the researcher's own work.
+- **Preconditions:** The paper has been analysed (UC04) and a profile exists.
+- **Trigger:** The researcher chooses "Compare" on an analysed paper.
+- **Main success scenario:**
+  1. The researcher chooses Compare.
+  2. `AppController.comparePaper(a)` is called.
+  3. `ResearchConsultantAgent` loads the profile from `ProjectMemory`.
+  4. The agent performs UC06 to establish whether the results are comparable (`<<include>>`).
+  5. The agent reasons over both structured records via the LLM Service, producing similarities, differences and what is novel.
+  6. A `ComparisonResult` is displayed, citing the specific paper fields it drew on.
+- **Alternative / exception flows:**
+  - 3a. The profile is incomplete — the agent reports exactly which fields are missing instead of guessing.
+  - 5a. The LLM Service is unavailable — the deterministic comparability verdict from UC06 is still shown, with the narrative marked unavailable.
+- **Postconditions:** A `ComparisonResult` is available for that paper.
+- **Related features:** F06.
+
+### UC06 — Check Result Comparability
+- **Actors:** Researcher; LLM Service (for the explanation only).
+- **Goal:** Decide whether a paper's reported results can fairly be compared with the researcher's own.
+- **Preconditions:** A `PaperAnalysis` with dataset, metric and results; a profile with the same.
+- **Trigger:** Included by UC05; also re-viewable directly from the comparison view.
+- **Main success scenario:**
+  1. `ComparabilityChecker.isComparable()` compares dataset, metric and split deterministically.
+  2. `ComparabilityChecker.findMismatches()` lists each specific mismatch.
+  3. The LLM Service renders the verdict as an explanation in context.
+  4. A yes / no / partial badge is shown with that explanation.
+- **Alternative / exception flows:**
+  - 1a. A field is unknown on either side — the verdict is "cannot determine", never silently treated as a match or a mismatch.
+  - 3a. The LLM Service is unavailable — the verdict and the raw mismatch list are shown without the narrative.
+- **Postconditions:** The verdict and its note are recorded in the `ComparisonResult`.
+- **Related features:** F07.
+
+### UC07 — Search for Prior Work
+- **Actors:** Researcher; Literature API; LLM Service.
+- **Goal:** Find whether an idea has already been tried.
+- **Preconditions:** The application is running; project memory may be empty.
+- **Trigger:** The researcher types an idea into the "has anyone tried…" box.
+- **Main success scenario:**
+  1. The researcher describes an idea in natural language.
+  2. `AppController.searchPriorWork(idea)` is called.
+  3. The agent searches both the Literature API and the `PaperAnalysis` records already in `ProjectMemory`.
+  4. The agent synthesises the closest evidence, with sources and a confidence note.
+  5. The findings are displayed.
+- **Alternative / exception flows:**
+  - 3a. The Literature API fails — results from local memory are still returned, and the gap is stated explicitly.
+  - 4a. Nothing matches — reported as "no matching evidence found", explicitly not as "nobody has tried this".
+- **Postconditions:** None; this use case only reads.
+- **Related features:** F08.
+
+### UC08 — Inspect Paper Repository
+- **Actors:** Researcher; GitHub API; LLM Service.
+- **Goal:** Judge whether a paper's code exists and is reusable.
+- **Preconditions:** The paper record carries a repository URL.
+- **Trigger:** The researcher chooses "Check code" on a paper.
+- **Main success scenario:**
+  1. The researcher chooses Check code.
+  2. `AppController.checkRepository(a)` is called.
+  3. `RepositoryAnalysisAgent` calls `ToolManager.fetchRepo()`, which uses `GitHubClient` to read repository metadata.
+  4. The GitHub API returns `RepoMetadata`.
+  5. The agent summarises it via the LLM Service into a `RepoSummary`: code presence, README quality, licence, datasets and evaluation scripts.
+  6. The summary is displayed.
+- **Alternative / exception flows:**
+  - 2a. The paper has no repository URL — reported plainly as "no repository linked".
+  - 3a. The repository is private, missing, or the API is rate-limited — reported as inaccessible, with the reason.
+  - Throughout: only metadata is read. Repository code is never downloaded and never executed.
+- **Postconditions:** A `RepoSummary` is attached to the paper.
+- **Related features:** F09.
+
+### UC09 — Review Project Changes
+- **Actors:** Researcher; Local Project Directory; LLM Service.
+- **Goal:** See what has changed in the researcher's own project since the last check.
+- **Preconditions:** At least one prior import (UC02) exists to diff against.
+- **Trigger:** The researcher opens the "What changed" panel, or runs the CLI `changes` command.
+- **Main success scenario:**
+  1. The researcher opens the panel.
+  2. `AppController.summarizeProjectChanges()` is called.
+  3. `ProjectContextProvider` re-scans the stored project path into a current `ContextSnapshot`.
+  4. `ProjectContextAgent` diffs it against `ProjectMemory.getLastSnapshot()`.
+  5. The LLM Service summarises the diff in natural language.
+  6. The summary is shown and the new snapshot is saved as the latest.
+- **Alternative / exception flows:**
+  - 2a. No prior snapshot exists — the system says so and points the researcher to UC02 rather than showing an empty panel.
+  - 3a. The project path is no longer readable — reported, and the previous snapshot is retained.
+  - 4a. Nothing has changed — an explicit "no changes since <date>" is shown.
+- **Postconditions:** The latest snapshot is updated.
+- **Related features:** F10.
+
+### UC10 — Ask a Project-Aware Question
+- **Actors:** Researcher; LLM Service.
+- **Goal:** Answer a free-form question using only what is stored about this project.
+- **Preconditions:** The application is running; project memory may be partly populated.
+- **Trigger:** The researcher sends a message in the chat panel, or runs the CLI `ask` command.
+- **Main success scenario:**
+  1. The researcher asks a question.
+  2. `AppController.ask(question)` is called.
+  3. The agent retrieves the relevant records — profile, paper analyses, latest snapshot — from `ProjectMemory`.
+  4. The agent answers from that retrieved context via the LLM Service.
+  5. The answer is displayed together with references to the records it used.
+- **Alternative / exception flows:**
+  - 3a. No relevant records are found — the agent says so rather than answering from general knowledge.
+  - 4a. The LLM Service is unavailable — an error with a retry is shown; no answer is fabricated.
+- **Postconditions:** None; project memory is unchanged.
+- **Related features:** F11.
+
+### UC11 — Generate Digest
+- **Actors:** Researcher; LLM Service.
+- **Goal:** Produce a single summary of new papers and recent project changes.
+- **Preconditions:** The application is running.
+- **Trigger:** A scheduled run, or the researcher opening the digest view or running the CLI `digest` command.
+- **Main success scenario:**
+  1. The digest is triggered.
+  2. `AppController.buildDigest()` is called.
+  3. `DigestBuilder` collects the papers it observed via `PaperFeedListener`, their analyses, and the latest change summary from `ProjectMemory`.
+  4. The LLM Service composes the digest text.
+  5. The `Digest` is displayed in the GUI, or printed by the CLI.
+- **Alternative / exception flows:**
+  - 3a. Nothing new since the last digest — an explicit "nothing new since <date>" is shown rather than an empty view.
+  - 4a. The LLM Service is unavailable — the assembled digest is still shown, without the narrative summary.
+- **Postconditions:** A `Digest` is available in the digest view.
+- **Related features:** F12.
+
+### UC12 — Explore Solution Landscape
+- **Actors:** Researcher; LLM Service.
+- **Goal:** See the space of solution approaches for the project's problem, and where the researcher's own approach sits within it.
+- **Preconditions:** A profile exists (UC01) and at least one paper has been analysed (UC04).
+- **Trigger:** The researcher opens the "Strategies" view, presses Rebuild, or runs the CLI `landscape` command.
+- **Main success scenario:**
+  1. The researcher opens the Strategies view.
+  2. `AppController.buildSolutionLandscape()` is called.
+  3. `ResearchConsultantAgent` loads the stored analyses and the profile from `ProjectMemory`.
+  4. `StrategyTaxonomy.seedRoots()` creates the fixed top-level categories.
+  5. The agent groups the analyses into proposed sub-branches beneath those roots via the LLM Service.
+  6. The agent writes each branch's main idea with `summarizeBranch()`.
+  7. The agent flags the branch matching the profile's own method.
+  8. `ProjectMemory` stores the landscape and the tree is displayed with the selected branch's detail.
+- **Alternative / exception flows:**
+  - 3a. Too few analysed papers to derive sub-branches — the seeded roots are shown, with that stated explicitly rather than inventing branches from one or two papers.
+  - 5a. A paper matches no branch — it is placed under an explicit "Unclassified" node rather than forced into the nearest one.
+  - 6a. The LLM Service is unavailable — the tree is still shown from the fixed roots and the stored strategy tags, with branch summaries marked unavailable.
+  - 7a. The profile records no method — the tree is shown without the "your approach" marker and the researcher is prompted to complete the profile.
+- **Postconditions:** The landscape is stored as the latest and is reused until rebuilt.
+- **Related features:** F13.
+
+
 ## Notes
 - GUI and CLI both need to reach every feature above, per the Stage 1 requirements.
-- `AppController` exposes one method per feature F01-F12, so the traceability
+- `AppController` exposes one method per feature F01-F13, so the traceability
   table in section 8 has a concrete entry point for every row.
-- Next: use-case diagram, use-case descriptions, sequence diagrams, the
-  traceability table, and the per-feature realization explanations.
+- Next: sequence diagrams (section 7), the feature-to-design traceability table
+  (section 8), and the per-feature realization explanations (section 9).
