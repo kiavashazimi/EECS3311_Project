@@ -1,5 +1,6 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -27,11 +28,13 @@ public class Digest {
      *
      * @return true when no papers and no project changes were collected
      */
+    @JsonIgnore
     public boolean isEmpty() {
         return newPapers.isEmpty() && projectChanges.isBlank();
     }
 
     /** @return true when the digest was assembled but no narrative could be generated */
+    @JsonIgnore
     public boolean isSummaryMissing() {
         return summaryText.isBlank();
     }

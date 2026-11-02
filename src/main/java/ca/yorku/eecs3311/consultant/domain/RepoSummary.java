@@ -1,5 +1,7 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+
 /** The readable verdict on whether a paper's code is reusable (F09). */
 public class RepoSummary {
 
@@ -34,6 +36,7 @@ public class RepoSummary {
     }
 
     /** @return true when the repository carries both data and a way to run the evaluation */
+    @JsonIgnore
     public boolean isReproducible() {
         return codeAvailable && hasDatasets && hasEvalScripts;
     }

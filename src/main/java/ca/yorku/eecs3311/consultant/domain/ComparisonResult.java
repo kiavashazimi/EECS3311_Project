@@ -1,5 +1,6 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -29,6 +30,7 @@ public class ComparisonResult {
      *
      * @return true when no narrative was produced
      */
+    @JsonIgnore
     public boolean isNarrativeMissing() {
         return narrative.isBlank();
     }

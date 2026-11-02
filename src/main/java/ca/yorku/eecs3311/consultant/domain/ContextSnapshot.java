@@ -1,5 +1,6 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -69,6 +70,7 @@ public class ContextSnapshot {
     }
 
     /** @return true when the scan found nothing at all, so F02 can say so plainly */
+    @JsonIgnore
     public boolean isEmpty() {
         return recentCommits.isEmpty() && configEntries.isEmpty() && resultFiles.isEmpty()
                 && agentDescription.isBlank();

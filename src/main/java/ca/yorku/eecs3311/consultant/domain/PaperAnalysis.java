@@ -1,5 +1,6 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -76,6 +77,7 @@ public class PaperAnalysis {
     }
 
     /** @return true when every field needed for a comparison is present */
+    @JsonIgnore
     public boolean isComplete() {
         return unknownFields().isEmpty();
     }

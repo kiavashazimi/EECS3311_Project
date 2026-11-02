@@ -1,5 +1,6 @@
 package ca.yorku.eecs3311.consultant.domain;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -52,6 +53,7 @@ public class ProjectProfile {
     }
 
     /** @return true when every required field is populated */
+    @JsonIgnore
     public boolean isComplete() {
         return missingFields().isEmpty();
     }
