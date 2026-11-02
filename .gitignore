@@ -1,0 +1,19 @@
+# Local secrets - never commit real credentials
+.env
+.env.*
+!.env.example
+config.local.json
+
+# Build output
+target/
+*.class
+*.jar
+
+# Local application state
+data/
+
+# IDE and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
