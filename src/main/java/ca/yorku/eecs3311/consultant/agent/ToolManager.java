@@ -3,10 +3,13 @@ package ca.yorku.eecs3311.consultant.agent;
 import ca.yorku.eecs3311.consultant.analysis.PaperParser;
 import ca.yorku.eecs3311.consultant.analysis.UnparseablePaperException;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.domain.RepoMetadata;
 import ca.yorku.eecs3311.consultant.literature.LiteratureSource;
 import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
 import ca.yorku.eecs3311.consultant.literature.SearchIntent;
 import ca.yorku.eecs3311.consultant.llm.LLMClient;
+import ca.yorku.eecs3311.consultant.repo.GitHubClient;
+import ca.yorku.eecs3311.consultant.repo.RepositoryUnavailableException;
 import ca.yorku.eecs3311.consultant.llm.LLMUnavailableException;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,8 +33,9 @@ public class ToolManager {
     /** The current strategy. Settable, not final: swappable at runtime. */
     private LiteratureSource literatureSource;
 
-    /** Composed, not injected: the Stage 1 diagram owns it by composition. */
+    /** Composed, not injected: the Stage 1 diagram owns these by composition. */
     private final PaperParser parser = new PaperParser();
+    private GitHubClient github = new GitHubClient();
 
     public ToolManager(LLMClient llm) {
         if (llm == null) {
@@ -149,6 +153,33 @@ public class ToolManager {
             callLog.add("parser: " + paper.getId() + " -> failed (" + e.getMessage() + ")");
             throw e;
         }
+    }
+
+    /**
+     * Reads a repository's metadata. Code is never downloaded or executed.
+     *
+     * @param repoUrl the repository URL
+     * @return its metadata
+     * @throws RepositoryUnavailableException if it cannot be read, with the reason
+     */
+    public RepoMetadata fetchRepo(String repoUrl) throws RepositoryUnavailableException {
+        try {
+            RepoMetadata metadata = github.fetchRepo(repoUrl);
+            callLog.add("github: " + repoUrl + " -> "
+                    + metadata.getTopLevelFiles().size() + " top-level entries");
+            return metadata;
+        } catch (RepositoryUnavailableException e) {
+            callLog.add("github: " + repoUrl + " -> failed (" + e.getMessage() + ")");
+            throw e;
+        }
+    }
+
+    /** Replaces the GitHub client, so a token can be supplied or a fake injected. */
+    public void setGitHubClient(GitHubClient client) {
+        if (client == null) {
+            throw new IllegalArgumentException("client must not be null");
+        }
+        this.github = client;
     }
 
     /** @return every tool call made so far, oldest first, read-only */

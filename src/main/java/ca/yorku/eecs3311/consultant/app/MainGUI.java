@@ -9,6 +9,7 @@ import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
+import ca.yorku.eecs3311.consultant.domain.RepoSummary;
 import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,6 +56,7 @@ public class MainGUI {
     private final Button discover = new Button("Discover papers");
     private final Button analyze = new Button("Analyze selected");
     private final Button compare = new Button("Compare to my project");
+    private final Button checkCode = new Button("Check code");
     private final Button importProject = new Button("Import my project");
     private final Button whatChanged = new Button("What changed");
     private final Button strategies = new Button("Strategies");
@@ -82,6 +84,8 @@ public class MainGUI {
         compare.setDisable(true);
         analyze.setOnAction(e -> analyzeSelected());
         compare.setOnAction(e -> compareSelected());
+        checkCode.setDisable(true);
+        checkCode.setOnAction(e -> checkCodeForSelected());
         importProject.setOnAction(e -> chooseAndImport());
         whatChanged.setOnAction(e -> showChanges());
         strategies.setOnAction(e -> showLandscape());
@@ -149,7 +153,7 @@ public class MainGUI {
         save.setOnAction(e -> save());
 
         status.setWrapText(true);
-        grid.add(new HBox(12, save, discover, analyze, compare), 1, row++);
+        grid.add(new HBox(12, save, discover, analyze, compare, checkCode), 1, row++);
         grid.add(new HBox(12, importProject, whatChanged, strategies, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
@@ -377,8 +381,57 @@ public class MainGUI {
     private void refreshButtons() {
         var selected = feed.selectedPaper();
         analyze.setDisable(selected.isEmpty());
-        compare.setDisable(selected.isEmpty()
-                || controller.findAnalysis(selected.get().getId()).isEmpty());
+        boolean notAnalysed = selected.isEmpty()
+                || controller.findAnalysis(selected.get().getId()).isEmpty();
+        compare.setDisable(notAnalysed);
+        checkCode.setDisable(notAnalysed);
+    }
+
+    /** F09 on the selected paper. Metadata only; no code is downloaded or run. */
+    private void checkCodeForSelected() {
+        var selected = feed.selectedPaper();
+        if (selected.isEmpty()) {
+            return;
+        }
+        var stored = controller.findAnalysis(selected.get().getId());
+        if (stored.isEmpty()) {
+            detail.setText("Analyze this paper first.");
+            return;
+        }
+        checkCode.setDisable(true);
+        detail.setText("Checking the repository for " + selected.get().getTitle() + "...");
+        runOffThread(() -> {
+            try {
+                return describe(controller.checkRepository(stored.get()));
+            } catch (AgentException e) {
+                return "Could not check the repository.\n\n" + e.getMessage();
+            }
+        }, checkCode);
+    }
+
+    private static String describe(RepoSummary r) {
+        if (r.getUrl().isBlank()) {
+            // UC08 2a: stated plainly rather than as a failure
+            return r.getNote();
+        }
+        StringBuilder b = new StringBuilder();
+        b.append(r.getUrl()).append("\n\n");
+        b.append("Code          ").append(r.isCodeAvailable() ? "present" : "not found")
+                .append('\n');
+        b.append("Data          ").append(r.isHasDatasets() ? "present" : "not found")
+                .append('\n');
+        b.append("Evaluation    ")
+                .append(r.isHasEvalScripts() ? "scripts present" : "none found").append('\n');
+        b.append("Licence       ").append(r.getLicense()).append('\n');
+        b.append("README        ").append(r.getReadmeQuality()).append('\n');
+        b.append("Reproducible  ").append(r.isReproducible()
+                ? "plausibly - code, data and an evaluation are all there"
+                : "not from this listing alone").append('\n');
+        if (!r.getNote().isBlank()) {
+            b.append('\n').append(r.getNote()).append('\n');
+        }
+        b.append("\n(metadata only - no code was downloaded or run)");
+        return b.toString();
     }
 
     /** F06/F07 on the selected paper, off the FX thread. */

@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+# Run the Research Consultant CLI.
+#
+#   ./rc help
+#   ./rc profile set --question "..." --datasets "a, b" --metrics "c"
+#   ./rc discover
+#
+# Runs java directly rather than `mvn exec:java -Dexec.args=...`, for two
+# reasons: that plugin re-splits its argument string on whitespace, so a
+# research question in quotes arrives as a dozen broken options; and skipping
+# Maven startup makes each command about a second faster, which matters when
+# recording.
+set -euo pipefail
+
+: "${JAVA_HOME:=/usr/lib/jvm/java-17-openjdk-amd64}"
+export JAVA_HOME
+
+cd "$(dirname "$0")"
+
+CP_FILE=target/classpath.txt
+
+# rebuild only when something actually changed
+if [ ! -d target/classes ] || [ -n "$(find src/main -newer target/classes -name '*.java' -print -quit 2>/dev/null)" ]; then
+  mvn -q compile
+fi
+if [ ! -f "$CP_FILE" ] || [ pom.xml -nt "$CP_FILE" ]; then
+  mvn -q dependency:build-classpath -Dmdep.outputFile="$CP_FILE"
+fi
+
+exec "$JAVA_HOME/bin/java" \
+  -cp "target/classes:$(cat "$CP_FILE")" \
+  ca.yorku.eecs3311.consultant.cli.Cli "$@"

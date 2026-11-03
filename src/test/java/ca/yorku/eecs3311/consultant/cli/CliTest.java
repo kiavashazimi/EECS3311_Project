@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.literature.FakeLiteratureSource;
+import ca.yorku.eecs3311.consultant.repo.GitHubClient;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.llm.FakeLLMClient;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
@@ -618,5 +619,123 @@ class CliTest {
     void theUsageMentionsLandscape() {
         cli.run(new String[] {"help"});
         assertTrue(stdout().contains("landscape"), stdout());
+    }
+
+    // --- repo ----------------------------------------------------------------
+
+    /** Points the tool manager's GitHub client at a canned listing. */
+    private void givenARepositoryListing(String... entries) {
+        StringBuilder contents = new StringBuilder("[");
+        for (String name : entries) {
+            contents.append("{\"name\":\"").append(name).append("\"},");
+        }
+        if (entries.length > 0) {
+            contents.setLength(contents.length() - 1);
+        }
+        contents.append("]");
+        tools.setGitHubClient(new GitHubClient(url -> url.endsWith("/contents/")
+                ? contents.toString()
+                : "{\"license\":{\"spdx_id\":\"MIT\"}}"));
+    }
+
+    private void givenAnAnalysedPaperWithRepo(String id, String repoUrl) {
+        givenAProfile();
+        PaperRecord record = paper(id, "A paper with code");
+        record.setRepoUrl(repoUrl);
+        source.returning(record);
+        llm.respondWith("{\"method\":\"m\",\"dataset\":\"MIMIC-CXR\","
+                + "\"metrics\":[\"AUROC\"],\"strategy_tags\":[\"diffusion\"]}");
+        cli.run(new String[] {"analyze", id});
+        out.reset();
+        err.reset();
+    }
+
+    @Test
+    void repoReportsWhatTheListingShows() {
+        givenAnAnalysedPaperWithRepo("1", "https://github.com/example/xrag");
+        givenARepositoryListing("README.md", "train.py", "evaluate.py", "data");
+        llm.respondWith("{\"readme_quality\":\"adequate\",\"note\":\"scripts are present\"}");
+
+        assertEquals(0, cli.run(new String[] {"repo", "1"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("code         present"), printed);
+        assertTrue(printed.contains("evaluation   scripts present"), printed);
+        assertTrue(printed.contains("MIT"), printed);
+        assertTrue(printed.contains("plausibly"), "code, data and evaluation are all there");
+    }
+
+    @Test
+    void repoSaysSoWhenTheListingShowsNoCode() {
+        givenAnAnalysedPaperWithRepo("1", "https://github.com/example/papers");
+        givenARepositoryListing("README.md", "paper.pdf");
+        llm.respondWith("{\"readme_quality\":\"minimal\",\"note\":\"documents only\"}");
+
+        cli.run(new String[] {"repo", "1"});
+        assertTrue(stdout().contains("code         not found"), stdout());
+        assertTrue(stdout().contains("not from this listing alone"), stdout());
+    }
+
+    @Test
+    void repoStatesPlainlyWhenThePaperLinksNoRepository() {
+        // UC08 2a
+        givenAnAnalysedPaperWithRepo("1", "");
+
+        assertEquals(0, cli.run(new String[] {"repo", "1"}), stderr());
+        assertTrue(stdout().contains("no repository linked"), stdout());
+    }
+
+    @Test
+    void repoReportsTheReasonWhenTheRepositoryCannotBeRead() {
+        // UC08 3a
+        givenAnAnalysedPaperWithRepo("1", "https://github.com/example/gone");
+        tools.setGitHubClient(new GitHubClient(url -> null));
+        llm.respondWith("{}");
+
+        assertEquals(0, cli.run(new String[] {"repo", "1"}), stderr());
+        assertTrue(stdout().contains("private") || stdout().contains("not found"), stdout());
+    }
+
+    @Test
+    void repoKeepsTheFactsWhenTheModelIsUnavailable() {
+        givenAnAnalysedPaperWithRepo("1", "https://github.com/example/xrag");
+        givenARepositoryListing("README.md", "train.py", "evaluate.py", "data");
+        llm.failWith("no key");
+
+        cli.run(new String[] {"repo", "1"});
+        assertTrue(stdout().contains("code         present"),
+                "derived from the listing, not the model: " + stdout());
+        assertTrue(stdout().contains("README       unknown"),
+                "an unjudged README must never read as good: " + stdout());
+    }
+
+    @Test
+    void repoSaysNoCodeWasRun() {
+        givenAnAnalysedPaperWithRepo("1", "https://github.com/example/xrag");
+        givenARepositoryListing("README.md", "train.py");
+        llm.respondWith("{\"readme_quality\":\"adequate\"}");
+
+        cli.run(new String[] {"repo", "1"});
+        assertTrue(stdout().contains("no code was downloaded or run"),
+                "the researcher should be told: " + stdout());
+    }
+
+    @Test
+    void repoRefusesAPaperThatHasNotBeenAnalysed() {
+        givenAProfile();
+        assertNotEquals(0, cli.run(new String[] {"repo", "9999"}));
+        assertTrue(stderr().contains("analyze 9999"), stderr());
+    }
+
+    @Test
+    void repoNeedsAPaperId() {
+        assertNotEquals(0, cli.run(new String[] {"repo"}));
+        assertTrue(stderr().contains("paper id"), stderr());
+    }
+
+    @Test
+    void theUsageMentionsRepo() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("repo"), stdout());
     }
 }

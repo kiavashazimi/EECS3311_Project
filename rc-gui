@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Launch the Research Consultant desktop GUI.
+set -euo pipefail
+: "${JAVA_HOME:=/usr/lib/jvm/java-17-openjdk-amd64}"
+export JAVA_HOME
+cd "$(dirname "$0")"
+exec mvn -q javafx:run

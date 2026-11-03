@@ -63,6 +63,77 @@ Every diagram also links a rendered image beneath it.
 
 ---
 
+## Running it
+
+Needs **JDK 17** and Maven. The project targets Java 17, so point `JAVA_HOME` at a full
+JDK 17 — not a runtime-only install, which has no compiler and fails with the misleading
+`release version 17 not supported`.
+
+```bash
+export JAVA_HOME=/path/to/jdk-17
+mvn test          # 405 tests, offline, no API key needed
+```
+
+### The desktop app
+
+```bash
+./rc-gui          # or: mvn javafx:run
+```
+
+### The command line
+
+```bash
+./rc help
+```
+
+Both clients go through the same `AppController`, so every feature behaves identically in
+each.
+
+```bash
+# 1. describe your project once
+./rc profile set \
+  --question "Does adding synthetic chest X-rays make a classifier fairer across subgroups?" \
+  --datasets "MIMIC-CXR, CheXpert" \
+  --metrics  "AUROC, underdiagnosis gap" \
+  --models   "conditional diffusion model, DenseNet-121"
+
+./rc profile show
+
+# 2. find papers that matter for it, ranked with a reason each
+./rc discover
+
+# 3. work on one paper
+./rc analyze 2412.20374v2     # extract its structure and tag its strategy
+./rc compare 2412.20374v2     # can its numbers be compared with yours?
+./rc repo    2412.20374v2     # does its code exist and look reusable?
+
+# 4. your own project
+./rc import ~/projects/my-study   # read its current state
+./rc changes                      # what changed since last time
+
+# 5. the field as a whole
+./rc landscape                    # solution approaches, and where yours sits
+```
+
+### API key
+
+The deterministic features — profile validation, comparability, change diffs, the landscape
+structure — work with **no key at all**. Anything that writes prose needs one:
+
+```bash
+cp .env.example .env
+# then set LLM_API_KEY in .env  (never in .env.example, which is tracked)
+```
+
+Without a key, those features still return their deterministic result and label the missing
+narrative rather than inventing one. `.env` is gitignored, and `Config.toString()` prints
+`llmApiKey=set` rather than the key.
+
+### Exit codes
+
+`0` success · `1` usage error · `2` validation failed, nothing saved · `3` could not write ·
+`4` an agent could not complete
+
 ## Planned implementation
 
 | | |

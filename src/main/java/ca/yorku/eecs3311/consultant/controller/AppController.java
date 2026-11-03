@@ -5,6 +5,7 @@ import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
 import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
+import ca.yorku.eecs3311.consultant.agent.RepositoryAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.ResearchConsultantAgent;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.context.ClaudeCodeContextProvider;
@@ -14,6 +15,7 @@ import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.RepoSummary;
 import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
@@ -47,6 +49,7 @@ public class AppController {
     private final PaperAnalysisAgent analysis;
     private final ResearchConsultantAgent consultant;
     private final ProjectContextAgent context;
+    private final RepositoryAnalysisAgent repository;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -67,6 +70,7 @@ public class AppController {
         // the coding-agent adapter is probed first and falls back to files
         this.context = new ProjectContextAgent(tools, List.of(
                 new ClaudeCodeContextProvider(), new FileBasedContextProvider()));
+        this.repository = new RepositoryAnalysisAgent(tools);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -358,6 +362,33 @@ public class AppController {
     public boolean tooFewPapersForLandscape() {
         return ResearchConsultantAgent.tooFewPapersForBranchSummaries(
                 memory.getPaperAnalyses().size());
+    }
+
+    // --- F09: inspect a paper's repository (UC08) ---------------------------
+
+    /**
+     * Judges whether a paper's code exists and looks reusable.
+     *
+     * <p>Only repository metadata is read. Code is never downloaded and never
+     * executed — a paper's repository is arbitrary third-party code, and
+     * running it to judge reproducibility would point a remote-code-execution
+     * hole at the researcher's own machine.
+     *
+     * <p>Not persisted, for the same reason as the context summary and the
+     * landscape: `readmeQuality` and `note` are generated, and a stored
+     * judgement could silently disagree with a repository that has since
+     * changed. Re-checking costs two GitHub calls and one model call.
+     *
+     * @param stored an analysis already produced by {@link #analyzePaper}
+     * @return the summary. A paper with no repository, or one that cannot be
+     *     reached, comes back as an unavailable summary carrying the reason
+     *     rather than as an error — UC08 flows 2a and 3a.
+     */
+    public RepoSummary checkRepository(PaperAnalysis stored) throws AgentException {
+        if (stored == null) {
+            throw new IllegalArgumentException("analysis must not be null");
+        }
+        return repository.checkRepository(stored);
     }
 
     // --- lifecycle -----------------------------------------------------------

@@ -9,6 +9,7 @@ import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.RepoSummary;
 import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
@@ -100,6 +101,8 @@ public class Cli {
                 return changes();
             case "landscape":
                 return landscape();
+            case "repo":
+                return repo(args);
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -347,6 +350,58 @@ public class Cli {
         return OK;
     }
 
+    // --- repo ----------------------------------------------------------------
+
+    private int repo(String[] args) {
+        if (args.length < 2) {
+            err.println("'repo' needs a paper id, e.g. 'rc repo 2412.20374v2'.");
+            return USAGE_ERROR;
+        }
+        String id = args[1];
+
+        PaperAnalysis stored = controller.findAnalysis(id).orElse(null);
+        if (stored == null) {
+            err.println("That paper has not been analysed yet. Run 'rc analyze " + id
+                    + "' first.");
+            return USAGE_ERROR;
+        }
+
+        RepoSummary summary;
+        try {
+            summary = controller.checkRepository(stored);
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        }
+
+        out.println(stored.getPaper().getTitle());
+        out.println();
+        if (summary.getUrl().isBlank()) {
+            // UC08 2a: stated plainly, not as a failure
+            out.println("  " + summary.getNote());
+            out.println();
+            return OK;
+        }
+        out.println("  repository   " + summary.getUrl());
+        out.println("  code         " + (summary.isCodeAvailable() ? "present" : "not found"));
+        out.println("  data         " + (summary.isHasDatasets() ? "present" : "not found"));
+        out.println("  evaluation   "
+                + (summary.isHasEvalScripts() ? "scripts present" : "none found"));
+        out.println("  licence      " + summary.getLicense());
+        out.println("  README       " + summary.getReadmeQuality());
+        out.println("  reproducible " + (summary.isReproducible()
+                ? "plausibly - code, data and an evaluation are all there"
+                : "not from this listing alone"));
+        if (!summary.getNote().isBlank()) {
+            out.println();
+            out.println("  " + summary.getNote());
+        }
+        out.println();
+        out.println("  (metadata only - no code was downloaded or run)");
+        out.println();
+        return OK;
+    }
+
     // --- landscape -----------------------------------------------------------
 
     private int landscape() {
@@ -509,6 +564,7 @@ public class Cli {
                   compare <paper id>        compare an analysed paper to your project
                   import <directory>        read your own project's current state
                   changes                   what changed in your project since last import
+                  repo <paper id>           does the paper's code exist and look reusable
                   landscape                 the space of solution approaches, and where
                                             your own approach sits in it
                   where                     print the file the project is stored in
