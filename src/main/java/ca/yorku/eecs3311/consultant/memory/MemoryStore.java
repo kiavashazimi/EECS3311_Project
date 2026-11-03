@@ -101,7 +101,11 @@ public class MemoryStore {
             for (var analysis : state.getPapers()) {
                 memory.addPaperAnalysis(analysis);
             }
-            memory.saveSnapshot(state.getLastSnapshot());
+            if (state.getLastSnapshot() != null) {
+                // absent means no import has ever happened; clear() already
+                // left an empty snapshot in place, which is what F10 diffs against
+                memory.saveSnapshot(state.getLastSnapshot());
+            }
             return true;
         } catch (IOException | RuntimeException e) {
             return false;

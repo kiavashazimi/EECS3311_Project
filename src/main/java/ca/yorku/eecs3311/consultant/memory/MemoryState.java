@@ -3,6 +3,7 @@ package ca.yorku.eecs3311.consultant.memory;
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -18,7 +19,20 @@ public class MemoryState {
 
     private ProjectProfile profile = new ProjectProfile();
     private List<PaperAnalysis> papers = new ArrayList<>();
-    private ContextSnapshot lastSnapshot = new ContextSnapshot();
+
+    /**
+     * Null until a project directory has actually been imported, and omitted
+     * from the file while it is. A snapshot written out as blank strings reads
+     * as a scan that happened, which is a different claim from never having
+     * scanned at all.
+     *
+     * <p>The test is a blank {@code scannedAt}, not {@code isEmpty()}: a scan
+     * always stamps its time, so a blank one means no scan ever ran. A scan
+     * that ran and genuinely found nothing is {@code isEmpty()} but must still
+     * be stored, because "we looked and there was nothing" is a real finding.
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private ContextSnapshot lastSnapshot;
 
     public ProjectProfile getProfile() {
         return profile;
@@ -36,11 +50,14 @@ public class MemoryState {
         this.papers = papers == null ? new ArrayList<>() : new ArrayList<>(papers);
     }
 
+    /** @return the stored snapshot, or null if none was ever imported */
     public ContextSnapshot getLastSnapshot() {
         return lastSnapshot;
     }
 
+    /** A snapshot from no scan at all is stored as null, to stay out of the file. */
     public void setLastSnapshot(ContextSnapshot lastSnapshot) {
-        this.lastSnapshot = lastSnapshot == null ? new ContextSnapshot() : lastSnapshot;
+        boolean neverScanned = lastSnapshot == null || lastSnapshot.getScannedAt().isBlank();
+        this.lastSnapshot = neverScanned ? null : lastSnapshot;
     }
 }

@@ -160,4 +160,60 @@ class MemoryStoreTest {
         assertFalse(written.contains("\"empty\""),
                 "isEmpty() is computed, not state");
     }
+
+    @Test
+    void anUnsetSnapshotIsNotWrittenToDisk() throws IOException {
+        // a snapshot of blank strings reads as "we scanned and found nothing",
+        // which is a different claim from "no project was ever imported"
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        memory.saveProfile(new ProjectProfile("a question"));
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+
+        String json = Files.readString(store.getFile());
+        assertFalse(json.contains("lastSnapshot"),
+                "an empty snapshot must be absent from the file, not written blank:\n" + json);
+    }
+
+    @Test
+    void aRealSnapshotStillRoundTrips() throws IOException {
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        ContextSnapshot snapshot = new ContextSnapshot("2026-11-03T10:00", "/home/me/project");
+        snapshot.setProviderName("FileBasedContextProvider");
+        memory.saveSnapshot(snapshot);
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+        assertTrue(Files.readString(store.getFile()).contains("lastSnapshot"));
+
+        memory.clear();
+        assertTrue(store.load(memory));
+        assertEquals("/home/me/project", memory.getLastSnapshot().getProjectPath());
+        assertEquals("FileBasedContextProvider", memory.getLastSnapshot().getProviderName());
+    }
+
+    @Test
+    void aScanThatFoundNothingIsStillStored() throws IOException {
+        // "we looked and there was nothing" is a finding; "we never looked" is
+        // not. Only the second may be dropped from the file.
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        ContextSnapshot ranButFoundNothing =
+                new ContextSnapshot("2026-11-03T10:00", "/home/me/empty-project");
+        assertTrue(ranButFoundNothing.isEmpty(), "precondition: the scan found no content");
+        memory.saveSnapshot(ranButFoundNothing);
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+
+        assertTrue(Files.readString(store.getFile()).contains("lastSnapshot"),
+                "a scan that ran must be recorded even when it found nothing");
+
+        memory.clear();
+        assertTrue(store.load(memory));
+        assertEquals("2026-11-03T10:00", memory.getLastSnapshot().getScannedAt());
+    }
 }
