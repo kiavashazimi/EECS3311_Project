@@ -6,6 +6,7 @@ import ca.yorku.eecs3311.consultant.config.Config;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
+import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.literature.ArxivSource;
@@ -83,6 +84,11 @@ public class Cli {
                 return profile(args);
             case "discover":
                 return discover();
+            case "analyze":
+            case "analyse":
+                return analyze(args);
+            case "analyses":
+                return analyses();
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -136,6 +142,65 @@ public class Cli {
             out.println();
         }
         return OK;
+    }
+
+    // --- analyze -------------------------------------------------------------
+
+    private int analyze(String[] args) {
+        if (args.length < 2) {
+            err.println("'analyze' needs a paper id, e.g. 'rc analyze 2304.09218v1'.");
+            err.println("Run 'rc discover' to see ids.");
+            return USAGE_ERROR;
+        }
+
+        PaperAnalysis analysis;
+        try {
+            analysis = controller.analyzePaperById(args[1]);
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        } catch (StorageException e) {
+            // the analysis survives in memory; say so rather than implying it is lost
+            err.println(e.getMessage());
+            err.println("It is held in memory and will be written on the next successful save.");
+            return STORAGE_ERROR;
+        }
+
+        printAnalysis(analysis);
+        return OK;
+    }
+
+    private int analyses() {
+        List<PaperAnalysis> stored = controller.getAnalyses();
+        if (stored.isEmpty()) {
+            out.println("No papers analysed yet. Try 'rc analyze <paper id>'.");
+            return OK;
+        }
+        out.println(stored.size() + " analysed paper(s):");
+        out.println();
+        for (PaperAnalysis analysis : stored) {
+            printAnalysis(analysis);
+        }
+        return OK;
+    }
+
+    private void printAnalysis(PaperAnalysis a) {
+        out.println(a.getPaper().getTitle());
+        out.println("  id          : " + a.getPaper().getId());
+        out.println("  problem     : " + a.getProblem());
+        out.println("  method      : " + a.getMethod());
+        out.println("  dataset     : " + a.getDataset());
+        out.println("  model       : " + a.getModel());
+        out.println("  metrics     : " + String.join(", ", a.getMetrics()));
+        out.println("  results     : " + a.getResults());
+        out.println("  limitations : " + a.getLimitations());
+        out.println("  strategy    : " + (a.getStrategyTags().isEmpty()
+                ? "none recognised" : String.join(", ", a.getStrategyTags()))
+                + (a.isTagsUncertain() ? "   (UNCERTAIN)" : ""));
+        if (!a.isComplete()) {
+            out.println("  unknown     : " + String.join(", ", a.unknownFields()));
+        }
+        out.println();
     }
 
     // --- profile -------------------------------------------------------------
@@ -259,6 +324,8 @@ public class Cli {
                   profile show              print the current project profile
                   profile set [options]     create or replace the project profile
                   discover                  find papers that matter for this project
+                  analyze <paper id>        extract a paper's structure and strategy
+                  analyses                  list every analysed paper
                   where                     print the file the project is stored in
                   help                      this message
 

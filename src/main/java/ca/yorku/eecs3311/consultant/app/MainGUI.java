@@ -3,6 +3,7 @@ package ca.yorku.eecs3311.consultant.app;
 import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
+import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
@@ -12,6 +13,7 @@ import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
@@ -44,6 +46,8 @@ public class MainGUI {
 
     private final PaperFeedPanel feed = new PaperFeedPanel();
     private final Button discover = new Button("Discover papers");
+    private final Button analyze = new Button("Analyze selected");
+    private final TextArea detail = new TextArea();
 
     public MainGUI(AppController controller) {
         this.controller = controller;
@@ -54,12 +58,17 @@ public class MainGUI {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(16));
         root.setTop(header());
-        root.setCenter(new VBox(8, form(), feed.node()));
+        root.setCenter(new VBox(8, form(), feed.node(), detailPane()));
         root.setBottom(footer());
 
         // the feed is registered as an observer; the agent never sees this class
         controller.addPaperFeedListener(feed);
         discover.setOnAction(e -> discoverPapers());
+
+        // nothing to analyse until a paper is picked out of the feed
+        analyze.setDisable(true);
+        analyze.setOnAction(e -> analyzeSelected());
+        feed.onSelectionChanged(() -> analyze.setDisable(feed.selectedPaper().isEmpty()));
 
         controller.loadStoredProject();
         showProfile(controller.getProfile());
@@ -100,7 +109,7 @@ public class MainGUI {
         save.setOnAction(e -> save());
 
         status.setWrapText(true);
-        grid.add(new HBox(12, save, discover, status), 1, row);
+        grid.add(new HBox(12, save, discover, analyze, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -171,6 +180,69 @@ public class MainGUI {
         }, "discover-papers");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    private ScrollPane detailPane() {
+        detail.setEditable(false);
+        detail.setWrapText(true);
+        detail.setPrefRowCount(10);
+        detail.setPromptText("Select a paper and click \"Analyze selected\".");
+        ScrollPane pane = new ScrollPane(detail);
+        pane.setFitToWidth(true);
+        return pane;
+    }
+
+    /** F04/F05 on the selected paper, off the FX thread like discovery. */
+    private void analyzeSelected() {
+        var selected = feed.selectedPaper();
+        if (selected.isEmpty()) {
+            return;
+        }
+        analyze.setDisable(true);
+        detail.setText("Analyzing " + selected.get().getTitle() + "...");
+
+        Thread worker = new Thread(() -> {
+            String text;
+            try {
+                text = describe(controller.analyzePaper(selected.get()));
+            } catch (AgentException e) {
+                // UC04 3a: the paper is flagged, not analysed from its title
+                text = "Could not analyse this paper.\n\n" + e.getMessage();
+            } catch (StorageException e) {
+                text = "The analysis was produced but could not be saved.\n\n"
+                        + e.getMessage()
+                        + "\n\nIt is held in memory and will be written on the next save.";
+            }
+            String shown = text;
+            Platform.runLater(() -> {
+                detail.setText(shown);
+                analyze.setDisable(false);
+            });
+        }, "analyze-paper");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static String describe(PaperAnalysis a) {
+        StringBuilder b = new StringBuilder();
+        b.append(a.getPaper().getTitle()).append("\n\n");
+        b.append("Problem      ").append(a.getProblem()).append('\n');
+        b.append("Method       ").append(a.getMethod()).append('\n');
+        b.append("Dataset      ").append(a.getDataset()).append('\n');
+        b.append("Model        ").append(a.getModel()).append('\n');
+        b.append("Metrics      ").append(String.join(", ", a.getMetrics())).append('\n');
+        b.append("Results      ").append(a.getResults()).append('\n');
+        b.append("Limitations  ").append(a.getLimitations()).append('\n');
+        b.append("Strategy     ").append(a.getStrategyTags().isEmpty()
+                ? "none recognised" : String.join(", ", a.getStrategyTags()));
+        if (a.isTagsUncertain()) {
+            b.append("   (UNCERTAIN - not in the taxonomy)");
+        }
+        if (!a.isComplete()) {
+            b.append("\n\nNot stated in the paper: ")
+                    .append(String.join(", ", a.unknownFields()));
+        }
+        return b.toString();
     }
 
     private void showProfile(ProjectProfile p) {

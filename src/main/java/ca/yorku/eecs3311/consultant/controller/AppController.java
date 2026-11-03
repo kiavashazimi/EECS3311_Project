@@ -1,11 +1,16 @@
 package ca.yorku.eecs3311.consultant.controller;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
+import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
+import ca.yorku.eecs3311.consultant.literature.SearchIntent;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
 import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
 import java.io.IOException;
@@ -32,6 +37,7 @@ public class AppController {
     private final ToolManager tools;
     private final MemoryStore store;
     private final PaperDiscoveryAgent discovery;
+    private final PaperAnalysisAgent analysis;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -47,6 +53,7 @@ public class AppController {
         this.tools = tools;
         this.store = store;
         this.discovery = new PaperDiscoveryAgent(tools);
+        this.analysis = new PaperAnalysisAgent(tools);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -121,6 +128,76 @@ public class AppController {
     /** @return what the discovery agent decided to do on its last run, or null */
     public ca.yorku.eecs3311.consultant.agent.Plan getLastDiscoveryPlan() {
         return discovery.getLastPlan();
+    }
+
+    // --- F04 / F05: analyze and classify a paper (UC04, SD04) ---------------
+
+    /**
+     * Turns a paper into a structured record, tags its strategy, and stores it.
+     *
+     * @param paper the paper to analyse; must not be null
+     * @return the stored analysis
+     * @throws AgentException if the paper has no analysable text, per UC04 3a
+     * @throws StorageException if the analysis could not be written. The
+     *     analysis is kept in memory and is readable through
+     *     {@link #getAnalyses()} — unlike a failed profile save, it is not
+     *     rolled back, because discarding it would throw away a model call the
+     *     researcher has already paid for.
+     */
+    public PaperAnalysis analyzePaper(PaperRecord paper)
+            throws AgentException, StorageException {
+        if (paper == null) {
+            throw new IllegalArgumentException("paper must not be null");
+        }
+        PaperAnalysis result = (PaperAnalysis) analysis.run(paper);
+        memory.addPaperAnalysis(result);
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            throw new StorageException(
+                    "the analysis was produced but could not be written to " + store.getFile(), e);
+        }
+        return result;
+    }
+
+    /**
+     * Analyses a paper identified by its source id, fetching it first.
+     *
+     * <p>Exists for the CLI, which has no feed to select from: it resolves the
+     * id through whichever {@code LiteratureSource} is configured rather than
+     * holding state between invocations.
+     *
+     * @throws AgentException if no paper with that id could be found
+     */
+    public PaperAnalysis analyzePaperById(String paperId)
+            throws AgentException, StorageException {
+        if (paperId == null || paperId.isBlank()) {
+            throw new IllegalArgumentException("paperId must not be null or blank");
+        }
+        List<PaperRecord> found;
+        try {
+            found = tools.search("id:" + paperId.strip(), SearchIntent.MOST_RELEVANT);
+        } catch (LiteratureUnavailableException e) {
+            throw new AgentException("could not look up " + paperId + ": " + e.getMessage(), e);
+        }
+        if (found.isEmpty()) {
+            throw new AgentException("no paper found with id " + paperId);
+        }
+        return analyzePaper(found.get(0));
+    }
+
+    /**
+     * Re-runs F05 on a stored analysis, without another extraction.
+     *
+     * @return the settled strategy tags
+     */
+    public List<String> classifyPaper(PaperAnalysis stored) {
+        return analysis.classifyExisting(stored);
+    }
+
+    /** @return every analysis stored for this project, read-only */
+    public List<PaperAnalysis> getAnalyses() {
+        return memory.getPaperAnalyses();
     }
 
     // --- lifecycle -----------------------------------------------------------

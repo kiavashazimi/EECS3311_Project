@@ -255,4 +255,98 @@ class CliTest {
         cli.run(new String[] {"help"});
         assertTrue(stdout().contains("discover"), stdout());
     }
+
+    // --- analyze -------------------------------------------------------------
+
+    private static final String ANALYSIS_REPLY = """
+            {"problem":"subgroup underperformance","method":"a diffusion model makes synthetic data",
+             "dataset":"MIMIC-CXR","model":"DenseNet-121","metrics":["AUROC"],
+             "results":"the gap narrows","limitations":"one modality",
+             "strategy_tags":["diffusion"]}
+            """;
+
+    @Test
+    void analyzePrintsTheStructuredRecord() {
+        givenAProfile();
+        source.returning(paper("2304.09218", "Generative models improve fairness"));
+        llm.respondWith(ANALYSIS_REPLY);
+
+        assertEquals(0, cli.run(new String[] {"analyze", "2304.09218"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("MIMIC-CXR"), printed);
+        assertTrue(printed.contains("DenseNet-121"), printed);
+        assertTrue(printed.contains("diffusion model"),
+                "the tag should be canonical, not the model's wording: " + printed);
+    }
+
+    @Test
+    void analyseSpeltTheBritishWayAlsoWorks() {
+        givenAProfile();
+        source.returning(paper("1", "A paper"));
+        llm.respondWith(ANALYSIS_REPLY);
+        assertEquals(0, cli.run(new String[] {"analyse", "1"}), stderr());
+    }
+
+    @Test
+    void analyzeNeedsAPaperId() {
+        assertNotEquals(0, cli.run(new String[] {"analyze"}));
+        assertTrue(stderr().contains("paper id"), stderr());
+    }
+
+    @Test
+    void analyzeReportsAnIdThatMatchesNothing() {
+        givenAProfile();
+        source.returning();
+
+        assertNotEquals(0, cli.run(new String[] {"analyze", "9999.99999"}));
+        assertTrue(stderr().contains("9999.99999"), stderr());
+    }
+
+    @Test
+    void analyzeFlagsAPaperWithNoAbstract() {
+        givenAProfile();
+        PaperRecord titleOnly = new PaperRecord("1", "Title Only", "arXiv", "2026-01-01");
+        source.returning(titleOnly);
+
+        assertNotEquals(0, cli.run(new String[] {"analyze", "1"}));
+        assertTrue(stderr().contains("Title Only"), stderr());
+    }
+
+    @Test
+    void anUnrecognisedStrategyIsPrintedAsUncertain() {
+        givenAProfile();
+        source.returning(paper("1", "A paper"));
+        llm.respondWith("{\"method\":\"a wholly new procedure\","
+                + "\"strategy_tags\":[\"quantum fairness\"]}");
+
+        cli.run(new String[] {"analyze", "1"});
+        assertTrue(stdout().contains("UNCERTAIN"), stdout());
+    }
+
+    @Test
+    void analysesListsWhatHasBeenStored() {
+        givenAProfile();
+        source.returning(paper("1", "First paper"));
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "1"});
+        out.reset();
+
+        assertEquals(0, cli.run(new String[] {"analyses"}));
+        assertTrue(stdout().contains("1 analysed paper"), stdout());
+        assertTrue(stdout().contains("First paper"), stdout());
+    }
+
+    @Test
+    void analysesSaysSoWhenNothingHasBeenAnalysed() {
+        assertEquals(0, cli.run(new String[] {"analyses"}));
+        assertTrue(stdout().toLowerCase().contains("no papers analysed"), stdout());
+    }
+
+    @Test
+    void theUsageMentionsAnalyze() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("analyze"), stdout());
+        assertTrue(stdout().contains("analyses"), stdout());
+    }
 }

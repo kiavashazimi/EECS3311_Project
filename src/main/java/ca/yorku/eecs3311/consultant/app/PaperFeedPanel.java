@@ -3,7 +3,9 @@ package ca.yorku.eecs3311.consultant.app;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -27,6 +29,9 @@ public class PaperFeedPanel implements PaperFeedListener {
     private final ObservableList<String> rows = FXCollections.observableArrayList();
     private final ListView<String> list = new ListView<>(rows);
     private final Label heading = new Label("Papers");
+
+    /** Parallel to {@link #rows}, so a selected row maps back to its paper. */
+    private final List<RankedPaper> ranked = new ArrayList<>();
 
     public PaperFeedPanel() {
         list.setPlaceholder(new Label("No papers yet. Click \"Discover papers\"."));
@@ -59,6 +64,25 @@ public class PaperFeedPanel implements PaperFeedListener {
         Platform.runLater(() -> rows.add(paper.getDate() + "  " + paper.getTitle()));
     }
 
+    /** @return how many papers the feed is showing */
+    int size() {
+        return ranked.size();
+    }
+
+    /** @return the paper on the selected row, or empty when nothing is selected */
+    public Optional<PaperRecord> selectedPaper() {
+        int index = list.getSelectionModel().getSelectedIndex();
+        return index < 0 || index >= ranked.size()
+                ? Optional.empty()
+                : Optional.of(ranked.get(index).paper());
+    }
+
+    /** Runs {@code action} whenever the selection changes, to enable buttons. */
+    public void onSelectionChanged(Runnable action) {
+        list.getSelectionModel().selectedIndexProperty()
+                .addListener((observable, before, after) -> action.run());
+    }
+
     /** Replaces the feed with the ranked list, which carries the reasons. */
     public void showRanked(List<RankedPaper> papers) {
         boolean unranked = !papers.isEmpty() && papers.stream().allMatch(RankedPaper::isUnranked);
@@ -69,6 +93,8 @@ public class PaperFeedPanel implements PaperFeedListener {
                         : ", most useful first"));
 
         rows.clear();
+        ranked.clear();
+        ranked.addAll(papers);
         for (RankedPaper ranked : papers) {
             PaperRecord p = ranked.paper();
             StringBuilder row = new StringBuilder();
@@ -89,6 +115,7 @@ public class PaperFeedPanel implements PaperFeedListener {
     public void showSearching() {
         heading.setText("Searching...");
         rows.clear();
+        ranked.clear();
     }
 
     public void showError(String message) {

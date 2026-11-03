@@ -1,5 +1,7 @@
 package ca.yorku.eecs3311.consultant.agent;
 
+import ca.yorku.eecs3311.consultant.analysis.PaperParser;
+import ca.yorku.eecs3311.consultant.analysis.UnparseablePaperException;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.literature.LiteratureSource;
 import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
@@ -27,6 +29,9 @@ public class ToolManager {
 
     /** The current strategy. Settable, not final: swappable at runtime. */
     private LiteratureSource literatureSource;
+
+    /** Composed, not injected: the Stage 1 diagram owns it by composition. */
+    private final PaperParser parser = new PaperParser();
 
     public ToolManager(LLMClient llm) {
         if (llm == null) {
@@ -120,6 +125,28 @@ public class ToolManager {
         } catch (LiteratureUnavailableException e) {
             callLog.add(tool + " (" + intent + "): " + summarise(query)
                     + " -> failed (" + e.getMessage() + ")");
+            throw e;
+        }
+    }
+
+    /**
+     * Reads the analysable text of a paper.
+     *
+     * @param paper the paper to read
+     * @return its text
+     * @throws UnparseablePaperException when the paper has no text to analyse,
+     *     so the caller flags it rather than analysing a title
+     */
+    public String parsePaper(PaperRecord paper) throws UnparseablePaperException {
+        if (paper == null) {
+            throw new IllegalArgumentException("paper must not be null");
+        }
+        try {
+            String text = parser.parse(paper);
+            callLog.add("parser: " + paper.getId() + " -> " + text.length() + " chars");
+            return text;
+        } catch (UnparseablePaperException e) {
+            callLog.add("parser: " + paper.getId() + " -> failed (" + e.getMessage() + ")");
             throw e;
         }
     }
