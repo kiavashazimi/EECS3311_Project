@@ -349,4 +349,84 @@ class CliTest {
         assertTrue(stdout().contains("analyze"), stdout());
         assertTrue(stdout().contains("analyses"), stdout());
     }
+
+    // --- compare -------------------------------------------------------------
+
+    private void givenAnAnalysedPaper(String id, String dataset, String metrics) {
+        givenAProfile();
+        source.returning(paper(id, "A relevant paper"));
+        llm.respondWith("{\"problem\":\"p\",\"method\":\"a diffusion model\","
+                + "\"dataset\":\"" + dataset + "\",\"model\":\"DenseNet-121\","
+                + "\"metrics\":[" + metrics + "],\"results\":\"0.86\","
+                + "\"limitations\":\"l\",\"strategy_tags\":[\"diffusion\"]}");
+        cli.run(new String[] {"analyze", id});
+        out.reset();
+        err.reset();
+    }
+
+    @Test
+    void comparePrintsTheVerdictAndTheNarrative() {
+        givenAnAnalysedPaper("1", "MIMIC-CXR", "\"AUROC\"");
+        llm.respondWith("{\"similarities\":[\"both add synthetic data\"],"
+                + "\"differences\":[\"different conditioning\"],"
+                + "\"narrative\":\"closest prior work\"}");
+
+        assertEquals(0, cli.run(new String[] {"compare", "1"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("COMPARABLE"), printed);
+        assertTrue(printed.contains("both add synthetic data"), printed);
+        assertTrue(printed.contains("closest prior work"), printed);
+    }
+
+    @Test
+    void compareNamesTheMismatchesWhenTheDataDiffers() {
+        givenAnAnalysedPaper("1", "ImageNet", "\"AUROC\"");
+        llm.respondWith("{\"similarities\":[],\"differences\":[],\"narrative\":\"n\"}");
+
+        cli.run(new String[] {"compare", "1"});
+        assertTrue(stdout().contains("NOT COMPARABLE"), stdout());
+        assertTrue(stdout().contains("ImageNet"), stdout());
+    }
+
+    @Test
+    void compareSaysCannotDetermineWhenTheMetricsAreNotStated() {
+        givenAnAnalysedPaper("1", "MIMIC-CXR", "");
+        llm.respondWith("{\"similarities\":[],\"differences\":[],\"narrative\":\"n\"}");
+
+        cli.run(new String[] {"compare", "1"});
+        assertTrue(stdout().contains("CANNOT DETERMINE"),
+                "an unstated metric is not a mismatch: " + stdout());
+    }
+
+    @Test
+    void compareKeepsTheVerdictWhenTheModelIsUnavailable() {
+        givenAnAnalysedPaper("1", "ImageNet", "\"AUROC\"");
+        llm.failWith("no key");
+
+        assertEquals(0, cli.run(new String[] {"compare", "1"}), stderr());
+        assertTrue(stdout().contains("NOT COMPARABLE"),
+                "F07 is deterministic and does not need the model");
+        assertTrue(stdout().contains("no narrative"), stdout());
+    }
+
+    @Test
+    void compareRefusesAPaperThatHasNotBeenAnalysed() {
+        givenAProfile();
+        assertNotEquals(0, cli.run(new String[] {"compare", "9999"}));
+        assertTrue(stderr().contains("analyze 9999"),
+                "it should say exactly what to run first: " + stderr());
+    }
+
+    @Test
+    void compareNeedsAPaperId() {
+        assertNotEquals(0, cli.run(new String[] {"compare"}));
+        assertTrue(stderr().contains("paper id"), stderr());
+    }
+
+    @Test
+    void theUsageMentionsCompare() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("compare"), stdout());
+    }
 }

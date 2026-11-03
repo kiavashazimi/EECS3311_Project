@@ -6,6 +6,7 @@ import ca.yorku.eecs3311.consultant.config.Config;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
+import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
@@ -89,6 +90,8 @@ public class Cli {
                 return analyze(args);
             case "analyses":
                 return analyses();
+            case "compare":
+                return compare(args);
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -201,6 +204,61 @@ public class Cli {
             out.println("  unknown     : " + String.join(", ", a.unknownFields()));
         }
         out.println();
+    }
+
+    // --- compare -------------------------------------------------------------
+
+    private int compare(String[] args) {
+        if (args.length < 2) {
+            err.println("'compare' needs a paper id, e.g. 'rc compare 2304.09218v1'.");
+            return USAGE_ERROR;
+        }
+        String id = args[1];
+
+        PaperAnalysis stored = controller.findAnalysis(id).orElse(null);
+        if (stored == null) {
+            // analysing first would hide that two separate things happened
+            err.println("That paper has not been analysed yet. Run 'rc analyze " + id
+                    + "' first.");
+            return USAGE_ERROR;
+        }
+
+        ComparisonResult result;
+        try {
+            result = controller.comparePaper(stored);
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        }
+
+        out.println(result.getPaperTitle());
+        out.println();
+        out.println("  Comparable?  " + result.getComparability().label());
+        if (result.getMismatches().isEmpty()) {
+            out.println("  Why          " + result.getComparabilityNote());
+        } else {
+            // the note summarises the same list, so print one or the other
+            out.println("  Why not");
+            result.getMismatches().forEach(m -> out.println("    - " + m));
+        }
+        if (!result.getSimilarities().isEmpty()) {
+            out.println("  Similarities");
+            result.getSimilarities().forEach(m -> out.println("    - " + m));
+        }
+        if (!result.getDifferences().isEmpty()) {
+            out.println("  Differences");
+            result.getDifferences().forEach(m -> out.println("    - " + m));
+        }
+        if (result.isNarrativeMissing()) {
+            out.println();
+            out.println("  (no narrative - the language model was unavailable; the verdict"
+                    + " above is deterministic and stands)");
+        } else {
+            out.println();
+            out.println("  " + result.getNarrative());
+        }
+        out.println();
+        return OK;
     }
 
     // --- profile -------------------------------------------------------------
@@ -326,6 +384,7 @@ public class Cli {
                   discover                  find papers that matter for this project
                   analyze <paper id>        extract a paper's structure and strategy
                   analyses                  list every analysed paper
+                  compare <paper id>        compare an analysed paper to your project
                   where                     print the file the project is stored in
                   help                      this message
 

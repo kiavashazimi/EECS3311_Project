@@ -222,4 +222,26 @@ class PaperAnalysisAgentTest {
         PaperAnalysisAgent agent = new PaperAnalysisAgent(new ToolManager(new FakeLLMClient()));
         assertThrows(IllegalArgumentException.class, () -> agent.classifyExisting(null));
     }
+
+    @Test
+    void theUnknownSentinelIsNeverStoredInsideAList() {
+        // a metrics list holding "unknown" is not a metric called "unknown";
+        // storing it that way made F07 report "different measures" instead of
+        // "cannot determine"
+        PaperAnalysis a = assertDoesNotThrowAnalysis("""
+                {"problem":"p","method":"a diffusion model","dataset":"MIMIC-CXR","model":"m",
+                 "metrics":["unknown"],"results":"r","limitations":"l","strategy_tags":[]}
+                """);
+
+        assertTrue(a.getMetrics().isEmpty(),
+                "an unstated metric is an empty list, not a list containing a sentinel");
+    }
+
+    private static PaperAnalysis assertDoesNotThrowAnalysis(String reply) {
+        try {
+            return analyse(reply);
+        } catch (Exception e) {
+            throw new AssertionError(e);
+        }
+    }
 }

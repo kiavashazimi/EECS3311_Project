@@ -4,7 +4,9 @@ import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
+import ca.yorku.eecs3311.consultant.agent.ResearchConsultantAgent;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
@@ -38,6 +40,7 @@ public class AppController {
     private final MemoryStore store;
     private final PaperDiscoveryAgent discovery;
     private final PaperAnalysisAgent analysis;
+    private final ResearchConsultantAgent consultant;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -54,6 +57,7 @@ public class AppController {
         this.store = store;
         this.discovery = new PaperDiscoveryAgent(tools);
         this.analysis = new PaperAnalysisAgent(tools);
+        this.consultant = new ResearchConsultantAgent(tools);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -198,6 +202,39 @@ public class AppController {
     /** @return every analysis stored for this project, read-only */
     public List<PaperAnalysis> getAnalyses() {
         return memory.getPaperAnalyses();
+    }
+
+    // --- F06 / F07: compare a paper to this project (UC05 includes UC06) ----
+
+    /**
+     * Explains how a paper relates to this project, and whether the two sets of
+     * numbers can fairly be compared.
+     *
+     * <p>F07 has no facade method of its own, by design: the comparability
+     * check runs inside this call, which is what the {@code <<include>>} from
+     * UC05 to UC06 means. It is also computed <em>before</em> the model writes
+     * anything, so a fluent narrative cannot talk the researcher into a
+     * comparison the data does not support.
+     *
+     * @param stored an analysis already produced by {@link #analyzePaper}
+     * @return the comparison, with the verdict and mismatch list set even when
+     *     the narrative is missing
+     * @throws AgentException if the comparison could not be run
+     */
+    public ComparisonResult comparePaper(PaperAnalysis stored) throws AgentException {
+        if (stored == null) {
+            throw new IllegalArgumentException("analysis must not be null");
+        }
+        return consultant.compare(stored, memory.getProfile());
+    }
+
+    /**
+     * Finds a stored analysis by its paper id.
+     *
+     * @return the analysis, or empty when that paper has not been analysed yet
+     */
+    public java.util.Optional<PaperAnalysis> findAnalysis(String paperId) {
+        return memory.findAnalysis(paperId);
     }
 
     // --- lifecycle -----------------------------------------------------------

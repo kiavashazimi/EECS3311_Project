@@ -3,6 +3,7 @@ package ca.yorku.eecs3311.consultant.app;
 import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
+import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
@@ -47,6 +48,7 @@ public class MainGUI {
     private final PaperFeedPanel feed = new PaperFeedPanel();
     private final Button discover = new Button("Discover papers");
     private final Button analyze = new Button("Analyze selected");
+    private final Button compare = new Button("Compare to my project");
     private final TextArea detail = new TextArea();
 
     public MainGUI(AppController controller) {
@@ -67,8 +69,10 @@ public class MainGUI {
 
         // nothing to analyse until a paper is picked out of the feed
         analyze.setDisable(true);
+        compare.setDisable(true);
         analyze.setOnAction(e -> analyzeSelected());
-        feed.onSelectionChanged(() -> analyze.setDisable(feed.selectedPaper().isEmpty()));
+        compare.setOnAction(e -> compareSelected());
+        feed.onSelectionChanged(this::refreshButtons);
 
         controller.loadStoredProject();
         showProfile(controller.getProfile());
@@ -109,7 +113,7 @@ public class MainGUI {
         save.setOnAction(e -> save());
 
         status.setWrapText(true);
-        grid.add(new HBox(12, save, discover, analyze, status), 1, row);
+        grid.add(new HBox(12, save, discover, analyze, compare, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -192,6 +196,78 @@ public class MainGUI {
         return pane;
     }
 
+    /**
+     * Compare is only offered once the paper has been analysed.
+     *
+     * <p>Two clicks rather than one on purpose: analysis and comparison are
+     * separate steps that can fail separately, and collapsing them would hide
+     * which one went wrong — the CLI requires the same order.
+     */
+    private void refreshButtons() {
+        var selected = feed.selectedPaper();
+        analyze.setDisable(selected.isEmpty());
+        compare.setDisable(selected.isEmpty()
+                || controller.findAnalysis(selected.get().getId()).isEmpty());
+    }
+
+    /** F06/F07 on the selected paper, off the FX thread. */
+    private void compareSelected() {
+        var selected = feed.selectedPaper();
+        if (selected.isEmpty()) {
+            return;
+        }
+        var stored = controller.findAnalysis(selected.get().getId());
+        if (stored.isEmpty()) {
+            detail.setText("Analyze this paper first.");
+            return;
+        }
+        compare.setDisable(true);
+        detail.setText("Comparing " + selected.get().getTitle() + " to your project...");
+
+        Thread worker = new Thread(() -> {
+            String text;
+            try {
+                text = describe(controller.comparePaper(stored.get()));
+            } catch (AgentException e) {
+                text = "Could not compare this paper.\n\n" + e.getMessage();
+            }
+            String shown = text;
+            Platform.runLater(() -> {
+                detail.setText(shown);
+                compare.setDisable(false);
+            });
+        }, "compare-paper");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private static String describe(ComparisonResult r) {
+        StringBuilder b = new StringBuilder();
+        b.append(r.getPaperTitle()).append("\n\n");
+        b.append("Comparable?  ").append(r.getComparability().label()).append('\n');
+        if (r.getMismatches().isEmpty()) {
+            b.append("             ").append(r.getComparabilityNote()).append('\n');
+        } else {
+            b.append("Why not\n");
+            r.getMismatches().forEach(m -> b.append("   - ").append(m).append('\n'));
+        }
+        appendList(b, "Similarities", r.getSimilarities());
+        appendList(b, "Differences", r.getDifferences());
+        b.append('\n');
+        b.append(r.isNarrativeMissing()
+                ? "(no narrative - the language model was unavailable. The verdict above "
+                        + "is deterministic and stands.)"
+                : r.getNarrative());
+        return b.toString();
+    }
+
+    private static void appendList(StringBuilder b, String heading, java.util.List<String> items) {
+        if (!items.isEmpty()) {
+            b.append('\n').append(heading).append('\n');
+            items.forEach(i -> b.append("   - ").append(i).append('\n'));
+        }
+    }
+
     /** F04/F05 on the selected paper, off the FX thread like discovery. */
     private void analyzeSelected() {
         var selected = feed.selectedPaper();
@@ -217,6 +293,7 @@ public class MainGUI {
             Platform.runLater(() -> {
                 detail.setText(shown);
                 analyze.setDisable(false);
+                refreshButtons();
             });
         }, "analyze-paper");
         worker.setDaemon(true);

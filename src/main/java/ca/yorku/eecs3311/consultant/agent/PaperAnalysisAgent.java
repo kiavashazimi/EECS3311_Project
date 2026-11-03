@@ -165,12 +165,23 @@ public class PaperAnalysisAgent extends Agent {
         return value.isBlank() ? PaperAnalysis.UNKNOWN : value;
     }
 
+    /**
+     * Reads a JSON array of strings, dropping blanks and the {@code unknown}
+     * sentinel.
+     *
+     * <p>The sentinel belongs in a scalar field, where {@code isUnknown()} can
+     * recognise it, never as an element of a list. A metrics list holding the
+     * single entry "unknown" is <em>not</em> a paper that reports a metric
+     * called "unknown": it is a paper whose metrics were not stated, and
+     * storing it that way made F07 answer "different measures" where it should
+     * have answered "cannot determine".
+     */
     private static List<String> strings(JsonNode array) {
         List<String> values = new ArrayList<>();
         if (array.isArray()) {
             for (JsonNode item : array) {
                 String value = item.asText("").strip();
-                if (!value.isBlank()) {
+                if (!value.isBlank() && !PaperAnalysis.isUnknown(value)) {
                     values.add(value);
                 }
             }
