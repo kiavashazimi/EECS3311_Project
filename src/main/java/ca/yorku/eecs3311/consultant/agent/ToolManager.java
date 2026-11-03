@@ -1,5 +1,9 @@
 package ca.yorku.eecs3311.consultant.agent;
 
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.literature.LiteratureSource;
+import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
+import ca.yorku.eecs3311.consultant.literature.SearchIntent;
 import ca.yorku.eecs3311.consultant.llm.LLMClient;
 import ca.yorku.eecs3311.consultant.llm.LLMUnavailableException;
 import java.util.ArrayList;
@@ -20,6 +24,9 @@ public class ToolManager {
 
     private final LLMClient llm;
     private final List<String> callLog = new ArrayList<>();
+
+    /** The current strategy. Settable, not final: swappable at runtime. */
+    private LiteratureSource literatureSource;
 
     public ToolManager(LLMClient llm) {
         if (llm == null) {
@@ -48,6 +55,71 @@ public class ToolManager {
             // logged before rethrowing: a call that failed is the one most
             // worth seeing in the record of what the agent tried
             callLog.add("llm: " + summarise(prompt) + " -> failed (" + e.getMessage() + ")");
+            throw e;
+        }
+    }
+
+    /**
+     * Chooses which literature API to search. This is the Strategy being
+     * swapped: no agent is touched, and nothing here knows which source it is.
+     *
+     * @param source the source to use from now on; must not be null
+     */
+    public void setLiteratureSource(LiteratureSource source) {
+        if (source == null) {
+            throw new IllegalArgumentException("source must not be null");
+        }
+        this.literatureSource = source;
+    }
+
+    /** @return the source currently in use, or null if none has been set */
+    public LiteratureSource getLiteratureSource() {
+        return literatureSource;
+    }
+
+    /**
+     * Searches the literature through whichever source is currently set.
+     *
+     * @param query free text; must not be null or blank
+     * @return the matching papers, empty when there are none
+     * @throws LiteratureUnavailableException if the source cannot be reached
+     * @throws IllegalStateException if no source has been set
+     */
+    public List<PaperRecord> search(String query) throws LiteratureUnavailableException {
+        return search(query, SearchIntent.MOST_RELEVANT);
+    }
+
+    /**
+     * Searches the literature in the order {@code intent} asks for — newest
+     * first for discovering new work, best matches first for prior work.
+     *
+     * @param query free text; must not be null or blank
+     * @param intent the ordering the caller needs
+     * @return the matching papers, empty when there are none
+     * @throws LiteratureUnavailableException if the source cannot be reached
+     * @throws IllegalStateException if no source has been set
+     */
+    public List<PaperRecord> search(String query, SearchIntent intent)
+            throws LiteratureUnavailableException {
+        if (query == null || query.isBlank()) {
+            throw new IllegalArgumentException("query must not be null or blank");
+        }
+        if (intent == null) {
+            throw new IllegalArgumentException("intent must not be null");
+        }
+        if (literatureSource == null) {
+            throw new IllegalStateException(
+                    "no literature source set - call setLiteratureSource() first");
+        }
+        String tool = literatureSource.name();
+        try {
+            List<PaperRecord> found = literatureSource.search(query, intent);
+            callLog.add(tool + " (" + intent + "): " + summarise(query)
+                    + " -> " + found.size() + " papers");
+            return found;
+        } catch (LiteratureUnavailableException e) {
+            callLog.add(tool + " (" + intent + "): " + summarise(query)
+                    + " -> failed (" + e.getMessage() + ")");
             throw e;
         }
     }
