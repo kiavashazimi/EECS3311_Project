@@ -1,0 +1,177 @@
+package ca.yorku.eecs3311.consultant.app;
+
+import ca.yorku.eecs3311.consultant.controller.AppController;
+import ca.yorku.eecs3311.consultant.controller.StorageException;
+import ca.yorku.eecs3311.consultant.controller.ValidationException;
+import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import java.util.ArrayList;
+import java.util.List;
+import javafx.geometry.Insets;
+import javafx.scene.control.Button;
+import javafx.scene.control.Label;
+import javafx.scene.control.TextArea;
+import javafx.scene.control.TextField;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.GridPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.Priority;
+import javafx.scene.layout.VBox;
+import javafx.scene.text.Font;
+
+/**
+ * The desktop client. Holds no domain logic: it collects input, calls
+ * {@link AppController}, and renders what comes back — the same facade the CLI
+ * uses, which is what keeps the two clients from drifting apart.
+ */
+public class MainGUI {
+
+    private static final String REQUIRED_STYLE =
+            "-fx-border-color: #c0392b; -fx-border-width: 0 0 2 0;";
+
+    private final AppController controller;
+
+    private final TextArea question = new TextArea();
+    private final TextField datasets = new TextField();
+    private final TextField models = new TextField();
+    private final TextField metrics = new TextField();
+    private final TextField results = new TextField();
+
+    private final Label status = new Label();
+    private final Label stored = new Label();
+
+    public MainGUI(AppController controller) {
+        this.controller = controller;
+    }
+
+    /** @return the root node for the window */
+    public BorderPane build() {
+        BorderPane root = new BorderPane();
+        root.setPadding(new Insets(16));
+        root.setTop(header());
+        root.setCenter(form());
+        root.setBottom(footer());
+
+        controller.loadStoredProject();
+        showProfile(controller.getProfile());
+        return root;
+    }
+
+    private VBox header() {
+        Label title = new Label("Project-Aware Research Consultant");
+        title.setFont(Font.font(20));
+        Label subtitle = new Label("Describe your project once. Everything else works from it.");
+        VBox box = new VBox(4, title, subtitle);
+        box.setPadding(new Insets(0, 0, 16, 0));
+        return box;
+    }
+
+    private GridPane form() {
+        question.setPrefRowCount(3);
+        question.setWrapText(true);
+        question.setPromptText("What are you trying to find out?");
+        datasets.setPromptText("comma separated, e.g. CheXpert, MIMIC-CXR");
+        models.setPromptText("comma separated");
+        metrics.setPromptText("comma separated, e.g. AUC, subgroup AUC gap");
+        results.setPromptText("comma separated, e.g. AUC = 0.84 on CheXpert");
+
+        GridPane grid = new GridPane();
+        grid.setHgap(12);
+        grid.setVgap(10);
+
+        int row = 0;
+        grid.addRow(row++, new Label("Research question *"), question);
+        grid.addRow(row++, new Label("Datasets *"), datasets);
+        grid.addRow(row++, new Label("Metrics *"), metrics);
+        grid.addRow(row++, new Label("Models"), models);
+        grid.addRow(row++, new Label("Your results so far"), results);
+
+        Button save = new Button("Save project");
+        save.setDefaultButton(true);
+        save.setOnAction(e -> save());
+
+        status.setWrapText(true);
+        grid.add(new HBox(12, save, status), 1, row);
+
+        GridPane.setHgrow(question, Priority.ALWAYS);
+        for (TextField field : List.of(datasets, models, metrics, results)) {
+            GridPane.setHgrow(field, Priority.ALWAYS);
+            field.setPrefColumnCount(40);
+        }
+        return grid;
+    }
+
+    private VBox footer() {
+        stored.setStyle("-fx-text-fill: #555;");
+        VBox box = new VBox(stored);
+        box.setPadding(new Insets(16, 0, 0, 0));
+        return box;
+    }
+
+    // --- actions -------------------------------------------------------------
+
+    private void save() {
+        clearFieldMarks();
+
+        ProjectProfile p = new ProjectProfile(question.getText() == null
+                ? "" : question.getText().strip());
+        p.setDatasets(items(datasets.getText()));
+        p.setModels(items(models.getText()));
+        p.setMetrics(items(metrics.getText()));
+        p.setOwnResults(items(results.getText()));
+
+        try {
+            ProjectProfile saved = controller.saveProfile(p);
+            status.setStyle("-fx-text-fill: #1e8449;");
+            status.setText("Saved.");
+            showProfile(saved);
+        } catch (ValidationException e) {
+            // SD01: inline error, nothing persisted
+            markMissing(e.getFields());
+            status.setStyle("-fx-text-fill: #c0392b;");
+            status.setText("Not saved - fill in: " + String.join(", ", e.getFields()));
+        } catch (StorageException e) {
+            status.setStyle("-fx-text-fill: #c0392b;");
+            status.setText("Could not write the project file. Your previous project is intact.");
+        }
+    }
+
+    private void showProfile(ProjectProfile p) {
+        question.setText(p.getResearchQuestion());
+        datasets.setText(String.join(", ", p.getDatasets()));
+        models.setText(String.join(", ", p.getModels()));
+        metrics.setText(String.join(", ", p.getMetrics()));
+        results.setText(String.join(", ", p.getOwnResults()));
+        stored.setText("Stored at " + controller.getStorageLocation());
+    }
+
+    private void markMissing(List<String> fields) {
+        for (String field : fields) {
+            switch (field) {
+                case "researchQuestion" -> question.setStyle(REQUIRED_STYLE);
+                case "datasets" -> datasets.setStyle(REQUIRED_STYLE);
+                case "metrics" -> metrics.setStyle(REQUIRED_STYLE);
+                default -> { }
+            }
+        }
+    }
+
+    private void clearFieldMarks() {
+        question.setStyle("");
+        datasets.setStyle("");
+        metrics.setStyle("");
+    }
+
+    /** Same splitting rule as the CLI, so the two clients behave identically. */
+    static List<String> items(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> items = new ArrayList<>();
+        for (String part : value.split(",")) {
+            if (!part.isBlank()) {
+                items.add(part.strip());
+            }
+        }
+        return items;
+    }
+}

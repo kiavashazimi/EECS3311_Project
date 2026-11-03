@@ -1,27 +1,227 @@
 package ca.yorku.eecs3311.consultant.cli;
 
+import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.config.Config;
+import ca.yorku.eecs3311.consultant.controller.AppController;
+import ca.yorku.eecs3311.consultant.controller.StorageException;
+import ca.yorku.eecs3311.consultant.controller.ValidationException;
+import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.literature.ArxivSource;
+import ca.yorku.eecs3311.consultant.llm.ClaudeClient;
+import ca.yorku.eecs3311.consultant.memory.MemoryStore;
+import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
+import java.io.PrintStream;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
 /**
- * Command-line entry point. Every major feature must be reachable from here as
- * well as from the GUI.
+ * Command-line entry point. Every feature must be reachable from here as well
+ * as from the GUI, and both go through {@link AppController} — neither client
+ * holds domain logic of its own.
+ *
+ * <p>Built around {@link #run(String[])} returning an exit code and writing to
+ * injected streams, so the commands can be tested without capturing
+ * {@code System.out} or ending the JVM.
  */
 public class Cli {
 
-    public static void main(String[] args) {
-        if (args.length == 0) {
-            printUsage();
-            return;
-        }
-        System.out.println("Unknown command: " + args[0]);
-        printUsage();
+    static final int OK = 0;
+    static final int USAGE_ERROR = 1;
+    static final int VALIDATION_ERROR = 2;
+    static final int STORAGE_ERROR = 3;
+
+    private static final Set<String> PROFILE_FLAGS =
+            Set.of("--question", "--datasets", "--models", "--metrics", "--results");
+
+    private final AppController controller;
+    private final PrintStream out;
+    private final PrintStream err;
+
+    public Cli(AppController controller, PrintStream out, PrintStream err) {
+        this.controller = controller;
+        this.out = out;
+        this.err = err;
     }
 
-    static void printUsage() {
-        System.out.println("""
+    public static void main(String[] args) {
+        Config config = Config.load();
+        AppController controller = new AppController(
+                ProjectMemory.getInstance(),
+                toolManager(config),
+                new MemoryStore(config.dataDir()));
+        controller.loadStoredProject();
+
+        System.exit(new Cli(controller, System.out, System.err).run(args));
+    }
+
+    private static ToolManager toolManager(Config config) {
+        ToolManager tools = new ToolManager(new ClaudeClient(config));
+        tools.setLiteratureSource(new ArxivSource());
+        return tools;
+    }
+
+    /**
+     * Runs one command.
+     *
+     * @param args the command and its flags
+     * @return the process exit code: 0 on success, non-zero on any failure
+     */
+    public int run(String[] args) {
+        if (args.length == 0 || "help".equals(args[0]) || "--help".equals(args[0])) {
+            printUsage();
+            return OK;
+        }
+
+        switch (args[0]) {
+            case "profile":
+                return profile(args);
+            case "where":
+                out.println(controller.getStorageLocation());
+                return OK;
+            default:
+                err.println("Unknown command: " + args[0]);
+                err.println("Run 'rc help' for the list of commands.");
+                return USAGE_ERROR;
+        }
+    }
+
+    // --- profile -------------------------------------------------------------
+
+    private int profile(String[] args) {
+        if (args.length < 2) {
+            err.println("'profile' needs a subcommand: 'profile show' or 'profile set'.");
+            return USAGE_ERROR;
+        }
+        switch (args[1]) {
+            case "show":
+                return profileShow();
+            case "set":
+                return profileSet(args);
+            default:
+                err.println("Unknown profile subcommand: " + args[1]);
+                return USAGE_ERROR;
+        }
+    }
+
+    private int profileShow() {
+        ProjectProfile p = controller.getProfile();
+        if (p.getResearchQuestion().isBlank() && p.getDatasets().isEmpty()) {
+            out.println("No project profile yet. Set one with:");
+            out.println("  rc profile set --question \"...\" --datasets \"...\" "
+                    + "--metrics \"...\"");
+            return OK;
+        }
+
+        out.println("Project profile");
+        out.println("  question : " + p.getResearchQuestion());
+        out.println("  datasets : " + String.join(", ", p.getDatasets()));
+        out.println("  models   : " + String.join(", ", p.getModels()));
+        out.println("  metrics  : " + String.join(", ", p.getMetrics()));
+        out.println("  results  : " + String.join(", ", p.getOwnResults()));
+        out.println("  complete : " + p.isComplete());
+        if (!p.isComplete()) {
+            out.println("  missing  : " + String.join(", ", p.missingFields()));
+        }
+        return OK;
+    }
+
+    private int profileSet(String[] args) {
+        Map<String, String> flags;
+        try {
+            flags = parseFlags(args, 2, PROFILE_FLAGS);
+        } catch (IllegalArgumentException e) {
+            err.println(e.getMessage());
+            return USAGE_ERROR;
+        }
+
+        ProjectProfile p = new ProjectProfile(flags.getOrDefault("--question", ""));
+        p.setDatasets(items(flags.get("--datasets")));
+        p.setModels(items(flags.get("--models")));
+        p.setMetrics(items(flags.get("--metrics")));
+        p.setOwnResults(items(flags.get("--results")));
+
+        try {
+            controller.saveProfile(p);
+        } catch (ValidationException e) {
+            err.println("Nothing was saved. Missing required field(s): "
+                    + String.join(", ", e.getFields()));
+            return VALIDATION_ERROR;
+        } catch (StorageException e) {
+            err.println(e.getMessage());
+            return STORAGE_ERROR;
+        }
+
+        out.println("Saved. Project stored at " + controller.getStorageLocation());
+        return profileShow();
+    }
+
+    // --- argument parsing ----------------------------------------------------
+
+    /**
+     * Reads {@code --flag value} pairs.
+     *
+     * <p>An unknown flag is an error rather than being ignored: a typo such as
+     * {@code --dataset} would otherwise discard what the user typed and then
+     * fail validation for a field they believe they filled in.
+     *
+     * @throws IllegalArgumentException with a message fit to print
+     */
+    private static Map<String, String> parseFlags(String[] args, int from, Set<String> allowed) {
+        Map<String, String> flags = new LinkedHashMap<>();
+        for (int i = from; i < args.length; i++) {
+            String flag = args[i];
+            if (!allowed.contains(flag)) {
+                throw new IllegalArgumentException("Unknown option: " + flag
+                        + "\nExpected one of: " + String.join(", ", allowed));
+            }
+            if (i + 1 >= args.length) {
+                throw new IllegalArgumentException(flag + " needs a value.");
+            }
+            flags.put(flag, args[++i]);
+        }
+        return flags;
+    }
+
+    /** Splits a comma-separated value, trimming each entry and dropping blanks. */
+    private static List<String> items(String value) {
+        if (value == null || value.isBlank()) {
+            return List.of();
+        }
+        List<String> items = new ArrayList<>();
+        for (String part : value.split(",")) {
+            if (!part.isBlank()) {
+                items.add(part.strip());
+            }
+        }
+        return items;
+    }
+
+    private void printUsage() {
+        out.println("""
                 Project-Aware Research Consultant - command line
 
                 Usage: rc <command> [options]
 
-                Commands will be added as features are implemented.
+                Commands
+                  profile show              print the current project profile
+                  profile set [options]     create or replace the project profile
+                  where                     print the file the project is stored in
+                  help                      this message
+
+                profile set options
+                  --question "..."          the research question          (required)
+                  --datasets "a, b"         datasets used                  (required)
+                  --metrics  "a, b"         metrics reported               (required)
+                  --models   "a, b"         models used
+                  --results  "a, b"         your own results so far
+
+                Example
+                  rc profile set --question "Does conditioning a generator on \\
+                demographics close the fairness gap?" \\
+                    --datasets "CheXpert, MIMIC-CXR" --metrics "AUC, subgroup AUC gap"
                 """);
     }
 }
