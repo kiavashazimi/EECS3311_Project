@@ -1,11 +1,13 @@
 package ca.yorku.eecs3311.consultant.cli;
 
+import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.config.Config;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.literature.ArxivSource;
 import ca.yorku.eecs3311.consultant.llm.ClaudeClient;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
@@ -32,6 +34,7 @@ public class Cli {
     static final int USAGE_ERROR = 1;
     static final int VALIDATION_ERROR = 2;
     static final int STORAGE_ERROR = 3;
+    static final int AGENT_ERROR = 4;
 
     private static final Set<String> PROFILE_FLAGS =
             Set.of("--question", "--datasets", "--models", "--metrics", "--results");
@@ -78,6 +81,8 @@ public class Cli {
         switch (args[0]) {
             case "profile":
                 return profile(args);
+            case "discover":
+                return discover();
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -86,6 +91,51 @@ public class Cli {
                 err.println("Run 'rc help' for the list of commands.");
                 return USAGE_ERROR;
         }
+    }
+
+    // --- discover ------------------------------------------------------------
+
+    private int discover() {
+        List<RankedPaper> papers;
+        try {
+            papers = controller.discoverPapers();
+        } catch (AgentException e) {
+            // UC03 4a: say what went wrong and offer the retry
+            err.println(e.getMessage());
+            err.println("Nothing was lost. Run 'rc discover' again to retry.");
+            return AGENT_ERROR;
+        }
+
+        if (papers.isEmpty()) {
+            out.println("No new papers matched this project.");
+            return OK;
+        }
+
+        boolean unranked = papers.stream().allMatch(RankedPaper::isUnranked);
+        if (unranked) {
+            out.println("Found " + papers.size()
+                    + " papers. NOT RANKED - the language model was unavailable.");
+        } else {
+            out.println("Found " + papers.size() + " papers, most useful first.");
+        }
+        out.println();
+
+        int position = 1;
+        for (RankedPaper ranked : papers) {
+            var p = ranked.paper();
+            String score = ranked.isUnranked() ? "  -" : String.format("%3d", ranked.score());
+            out.println(String.format("%2d. [%s] %s", position++, score, p.getTitle()));
+            out.println("      " + p.getDate() + "  " + p.getVenue() + "  " + p.getUrl());
+            if (!ranked.why().isBlank()) {
+                out.println("      why: " + ranked.why()
+                        + (ranked.closestPriorWork() ? "  <-- closest prior work" : ""));
+            }
+            if (p.hasRepository()) {
+                out.println("      code: " + p.getRepoUrl());
+            }
+            out.println();
+        }
+        return OK;
     }
 
     // --- profile -------------------------------------------------------------
@@ -208,6 +258,7 @@ public class Cli {
                 Commands
                   profile show              print the current project profile
                   profile set [options]     create or replace the project profile
+                  discover                  find papers that matter for this project
                   where                     print the file the project is stored in
                   help                      this message
 

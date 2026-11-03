@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.literature.FakeLiteratureSource;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.llm.FakeLLMClient;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
@@ -30,14 +32,21 @@ class CliTest {
     Path tempDir;
 
     private Cli cli;
+    private ToolManager tools;
+    private FakeLLMClient llm;
+    private FakeLiteratureSource source;
     private ByteArrayOutputStream out;
     private ByteArrayOutputStream err;
 
     @BeforeEach
     void setUp() {
         ProjectMemory.getInstance().clear();
+        llm = new FakeLLMClient();
+        source = new FakeLiteratureSource("arXiv");
+        tools = new ToolManager(llm);
+        tools.setLiteratureSource(source);
         AppController controller = new AppController(ProjectMemory.getInstance(),
-                new ToolManager(new FakeLLMClient()), new MemoryStore(tempDir));
+                tools, new MemoryStore(tempDir));
         out = new ByteArrayOutputStream();
         err = new ByteArrayOutputStream();
         cli = new Cli(controller,
@@ -168,5 +177,82 @@ class CliTest {
     void whereReportsTheStorageFile() {
         assertEquals(0, cli.run(new String[] {"where"}));
         assertTrue(stdout().contains("project-memory.json"), stdout());
+    }
+
+    // --- discover ------------------------------------------------------------
+
+    private void givenAProfile() {
+        cli.run(new String[] {
+            "profile", "set", "--question", "Do synthetic chest X-rays improve fairness?",
+            "--datasets", "MIMIC-CXR", "--metrics", "AUROC",
+        });
+        out.reset();
+        err.reset();
+    }
+
+    private static PaperRecord paper(String id, String title) {
+        PaperRecord p = new PaperRecord(id, title, "arXiv cs.CV", "2026-02-01");
+        p.setUrl("http://arxiv.org/abs/" + id);
+        p.setSummary("abstract of " + title);
+        return p;
+    }
+
+    @Test
+    void discoverPrintsRankedPapersWithTheirReasons() {
+        givenAProfile();
+        source.returning(paper("1", "Fair synthetic CXR"), paper("2", "Unrelated"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"1\",\"score\":91,"
+                + "\"why\":\"same method on CXR\",\"closest_prior_work\":true},"
+                + "{\"id\":\"2\",\"score\":12,\"why\":\"no fairness angle\"}]}");
+
+        assertEquals(0, cli.run(new String[] {"discover"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("Fair synthetic CXR"), printed);
+        assertTrue(printed.contains("same method on CXR"),
+                "the reason is the product, not the score: " + printed);
+        assertTrue(printed.contains("closest prior work"), printed);
+    }
+
+    @Test
+    void discoverSaysSoWhenNothingMatched() {
+        givenAProfile();
+        source.returning();
+
+        assertEquals(0, cli.run(new String[] {"discover"}));
+        assertTrue(stdout().toLowerCase().contains("no new papers"), stdout());
+    }
+
+    @Test
+    void discoverLabelsResultsAsUnrankedWhenTheModelIsUnavailable() {
+        givenAProfile();
+        source.returning(paper("1", "A paper"));
+        llm.failWith("no key configured");
+
+        assertEquals(0, cli.run(new String[] {"discover"}));
+        assertTrue(stdout().contains("NOT RANKED"),
+                "an unranked list must say so rather than imply an order: " + stdout());
+    }
+
+    @Test
+    void discoverReportsAFailedSearchAndOffersARetry() {
+        givenAProfile();
+        source.failWith("HTTP 503");
+
+        assertNotEquals(0, cli.run(new String[] {"discover"}));
+        assertTrue(stderr().contains("503"), stderr());
+        assertTrue(stderr().toLowerCase().contains("retry"), stderr());
+    }
+
+    @Test
+    void discoverWithoutAProfileExplainsWhatIsMissing() {
+        assertNotEquals(0, cli.run(new String[] {"discover"}));
+        assertTrue(stderr().contains("research question"), stderr());
+    }
+
+    @Test
+    void theUsageMentionsDiscover() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("discover"), stdout());
     }
 }

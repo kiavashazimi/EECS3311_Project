@@ -1,11 +1,14 @@
 package ca.yorku.eecs3311.consultant.app;
 
+import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import java.util.ArrayList;
 import java.util.List;
+import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
@@ -39,6 +42,9 @@ public class MainGUI {
     private final Label status = new Label();
     private final Label stored = new Label();
 
+    private final PaperFeedPanel feed = new PaperFeedPanel();
+    private final Button discover = new Button("Discover papers");
+
     public MainGUI(AppController controller) {
         this.controller = controller;
     }
@@ -48,8 +54,12 @@ public class MainGUI {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(16));
         root.setTop(header());
-        root.setCenter(form());
+        root.setCenter(new VBox(8, form(), feed.node()));
         root.setBottom(footer());
+
+        // the feed is registered as an observer; the agent never sees this class
+        controller.addPaperFeedListener(feed);
+        discover.setOnAction(e -> discoverPapers());
 
         controller.loadStoredProject();
         showProfile(controller.getProfile());
@@ -90,7 +100,7 @@ public class MainGUI {
         save.setOnAction(e -> save());
 
         status.setWrapText(true);
-        grid.add(new HBox(12, save, status), 1, row);
+        grid.add(new HBox(12, save, discover, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -133,6 +143,34 @@ public class MainGUI {
             status.setStyle("-fx-text-fill: #c0392b;");
             status.setText("Could not write the project file. Your previous project is intact.");
         }
+    }
+
+    /**
+     * Runs discovery off the FX thread. A literature search plus two model
+     * calls takes seconds; doing it on the FX thread would freeze the window
+     * and look like a crash.
+     */
+    private void discoverPapers() {
+        discover.setDisable(true);
+        feed.showSearching();
+
+        Thread worker = new Thread(() -> {
+            try {
+                List<RankedPaper> papers = controller.discoverPapers();
+                Platform.runLater(() -> {
+                    feed.showRanked(papers);
+                    discover.setDisable(false);
+                });
+            } catch (AgentException e) {
+                // UC03 4a: the error is shown and the feed is left alone
+                Platform.runLater(() -> {
+                    feed.showError(e.getMessage());
+                    discover.setDisable(false);
+                });
+            }
+        }, "discover-papers");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     private void showProfile(ProjectProfile p) {

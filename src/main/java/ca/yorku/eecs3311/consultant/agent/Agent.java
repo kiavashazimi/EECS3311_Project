@@ -29,9 +29,11 @@ public abstract class Agent {
      *
      * @param input whatever the agent works from — a query, a paper, a path
      * @return the summarized result
+     * @throws AgentException if a step could not be completed, so the client
+     *     can show the error and keep what it already had on screen
      * @throws IllegalStateException if a subclass produces no plan
      */
-    public final Object run(Object input) {
+    public final Object run(Object input) throws AgentException {
         Plan plan = plan(input);
         if (plan == null) {
             // without this the null would arrive inside executeTools and fail
@@ -55,11 +57,11 @@ public abstract class Agent {
     }
 
     /** Works out which tools to use, and in what order. */
-    protected abstract Plan plan(Object input);
+    protected abstract Plan plan(Object input) throws AgentException;
 
     /** Carries out the plan through {@link #tools}. */
-    protected abstract Object executeTools(Plan plan);
+    protected abstract Object executeTools(Plan plan) throws AgentException;
 
     /** Turns the raw tool output into the result the caller wants. */
-    protected abstract Object summarize(Object result);
+    protected abstract Object summarize(Object result) throws AgentException;
 }

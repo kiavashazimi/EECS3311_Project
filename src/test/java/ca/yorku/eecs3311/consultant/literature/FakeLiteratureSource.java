@@ -10,6 +10,7 @@ public final class FakeLiteratureSource implements LiteratureSource {
     private final List<String> queriesSeen = new ArrayList<>();
     private final List<SearchIntent> intentsSeen = new ArrayList<>();
     private List<PaperRecord> results = new ArrayList<>();
+    private int minTermsForResults = 0;
     private String unavailableReason;
     private final String name;
 
@@ -24,6 +25,15 @@ public final class FakeLiteratureSource implements LiteratureSource {
     public FakeLiteratureSource returning(PaperRecord... papers) {
         this.results = new ArrayList<>(List.of(papers));
         this.unavailableReason = null;
+        return this;
+    }
+
+    /**
+     * Returns nothing until the query has been relaxed to {@code terms} terms
+     * or fewer, mimicking arXiv, where ANDed terms collapse the result set.
+     */
+    public FakeLiteratureSource emptyUntilRelaxedTo(int terms) {
+        this.minTermsForResults = terms;
         return this;
     }
 
@@ -42,6 +52,9 @@ public final class FakeLiteratureSource implements LiteratureSource {
         intentsSeen.add(intent);
         if (unavailableReason != null) {
             throw new LiteratureUnavailableException(unavailableReason);
+        }
+        if (minTermsForResults > 0 && QueryTerms.count(query) > minTermsForResults) {
+            return List.of();
         }
         return List.copyOf(results);
     }

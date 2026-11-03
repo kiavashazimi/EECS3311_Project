@@ -50,7 +50,7 @@ class AgentTest {
     }
 
     @Test
-    void runCallsTheThreeStepsInOrderExactlyOnce() {
+    void runCallsTheThreeStepsInOrderExactlyOnce() throws Exception {
         RecordingAgent agent = new RecordingAgent(tools());
 
         Object out = agent.run("a paper");
@@ -83,7 +83,7 @@ class AgentTest {
     }
 
     @Test
-    void thePlanIsKeptSoTheUiCanShowWhatTheAgentDid() {
+    void thePlanIsKeptSoTheUiCanShowWhatTheAgentDid() throws Exception {
         RecordingAgent agent = new RecordingAgent(tools());
 
         agent.run("a paper");

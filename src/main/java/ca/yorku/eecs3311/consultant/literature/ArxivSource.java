@@ -130,7 +130,7 @@ public class ArxivSource implements LiteratureSource {
      */
     private static String searchExpression(String query) {
         List<String> terms = new ArrayList<>();
-        for (String token : tokenize(query)) {
+        for (String token : QueryTerms.split(query)) {
             String term = toTerm(token);
             if (term != null) {
                 terms.add(term);
@@ -141,28 +141,6 @@ public class ArxivSource implements LiteratureSource {
                     "the query has no searchable words: \"" + query + "\"");
         }
         return String.join("+AND+", terms);
-    }
-
-    /**
-     * Splits a query into terms, keeping a {@code "quoted phrase"} whole.
-     *
-     * <p>An unclosed quote is treated as running to the end rather than
-     * rejected: these queries are written by a language model, and losing a
-     * search to a missing quote is worse than searching one term too broadly.
-     */
-    static List<String> tokenize(String query) {
-        String q = query.strip();
-        if (q.chars().filter(c -> c == '"').count() % 2 != 0) {
-            q = q + '"';
-        }
-
-        List<String> tokens = new ArrayList<>();
-        Matcher m = Pattern.compile("\"([^\"]*)\"|(\\S+)").matcher(q);
-        while (m.find()) {
-            String phrase = m.group(1);
-            tokens.add(phrase != null ? '"' + phrase + '"' : m.group(2));
-        }
-        return tokens;
     }
 
     /** @return the encoded arXiv term, or null if there is nothing to search */

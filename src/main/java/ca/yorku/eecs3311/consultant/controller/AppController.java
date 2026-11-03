@@ -1,7 +1,11 @@
 package ca.yorku.eecs3311.consultant.controller;
 
+import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
+import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
 import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
 import java.io.IOException;
@@ -27,6 +31,7 @@ public class AppController {
     private final ProjectMemory memory;
     private final ToolManager tools;
     private final MemoryStore store;
+    private final PaperDiscoveryAgent discovery;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -41,6 +46,7 @@ public class AppController {
         this.memory = memory;
         this.tools = tools;
         this.store = store;
+        this.discovery = new PaperDiscoveryAgent(tools);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -86,6 +92,35 @@ public class AppController {
     /** @return the current profile, empty but never null before the first save */
     public ProjectProfile getProfile() {
         return memory.getProfile();
+    }
+
+    // --- F03: discover new papers (UC03, SD03) ------------------------------
+
+    /**
+     * Finds papers that matter for the current project, best first.
+     *
+     * @return the ranked papers, each with a one-line reason; empty when the
+     *     search found nothing, which is a state rather than a failure
+     * @throws AgentException if every search failed, or the project has no
+     *     research question yet. The caller keeps whatever it had on screen and
+     *     offers a retry, per UC03 flow 4a.
+     */
+    @SuppressWarnings("unchecked")
+    public List<RankedPaper> discoverPapers() throws AgentException {
+        return (List<RankedPaper>) discovery.run(memory.getProfile());
+    }
+
+    /**
+     * Registers something that wants to hear about each discovered paper — the
+     * GUI feed, the digest builder, anything added later.
+     */
+    public void addPaperFeedListener(PaperFeedListener listener) {
+        discovery.addListener(listener);
+    }
+
+    /** @return what the discovery agent decided to do on its last run, or null */
+    public ca.yorku.eecs3311.consultant.agent.Plan getLastDiscoveryPlan() {
+        return discovery.getLastPlan();
     }
 
     // --- lifecycle -----------------------------------------------------------
