@@ -1,0 +1,1 @@
+Fixture for the no-agent-context case. Deliberately contains no CLAUDE.md.

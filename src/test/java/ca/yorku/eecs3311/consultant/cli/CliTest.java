@@ -15,6 +15,7 @@ import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -428,5 +429,111 @@ class CliTest {
     void theUsageMentionsCompare() {
         cli.run(new String[] {"help"});
         assertTrue(stdout().contains("compare"), stdout());
+    }
+
+    // --- import / changes ----------------------------------------------------
+
+    private Path aProjectWith(String configBody) throws Exception {
+        Path project = tempDir.resolve("proj-" + configBody.hashCode());
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("run.yaml"), configBody);
+        return project;
+    }
+
+    @Test
+    void importReadsADirectoryAndSaysWhichProviderAnswered() throws Exception {
+        givenAProfile();
+        llm.respondWith("a readable summary");
+
+        Path project = aProjectWith("model: tcn\nseed: 20\n");
+        assertEquals(0, cli.run(new String[] {"import", project.toString()}), stderr());
+
+        assertTrue(stdout().contains("FileBasedContextProvider"),
+                "the researcher must be told where the facts came from: " + stdout());
+        assertTrue(stdout().contains("run.yaml"), stdout());
+        assertTrue(stdout().contains("a readable summary"), stdout());
+    }
+
+    @Test
+    void importPrefersTheCodingAgentWhenCLAUDEmdIsPresent() throws Exception {
+        givenAProfile();
+        llm.respondWith("a readable summary");
+
+        Path project = aProjectWith("model: tcn\n");
+        Files.writeString(project.resolve("CLAUDE.md"), "# CLAUDE.md\n\nAbout this study.");
+
+        cli.run(new String[] {"import", project.toString()});
+        assertTrue(stdout().contains("ClaudeCodeContextProvider"), stdout());
+        assertTrue(stdout().contains("About this study"), stdout());
+    }
+
+    @Test
+    void importKeepsTheFactsWhenTheModelIsUnavailable() throws Exception {
+        givenAProfile();
+        llm.failWith("no key");
+
+        Path project = aProjectWith("model: tcn\nseed: 20\n");
+        assertEquals(0, cli.run(new String[] {"import", project.toString()}), stderr());
+
+        assertTrue(stdout().contains("run.yaml"), "the facts stand: " + stdout());
+        assertTrue(stdout().contains("no summary"), stdout());
+    }
+
+    @Test
+    void importReportsAnUnreadableDirectoryAndStoresNothing() {
+        givenAProfile();
+        assertNotEquals(0, cli.run(new String[] {"import", "/definitely/not/here"}));
+        assertTrue(stderr().contains("/definitely/not/here"), stderr());
+    }
+
+    @Test
+    void importNeedsADirectory() {
+        assertNotEquals(0, cli.run(new String[] {"import"}));
+        assertTrue(stderr().contains("directory"), stderr());
+    }
+
+    @Test
+    void changesWithoutAPriorImportPointsAtTheImport() {
+        // UC09 2a: not an empty panel
+        givenAProfile();
+        assertNotEquals(0, cli.run(new String[] {"changes"}));
+        assertTrue(stderr().contains("import"), stderr());
+    }
+
+    @Test
+    void changesListsWhatChangedAndSaysWhat() throws Exception {
+        givenAProfile();
+        llm.respondWith("a summary");
+        Path project = aProjectWith("model: tcn\nseed: 20\n");
+        cli.run(new String[] {"import", project.toString()});
+        out.reset();
+
+        Files.writeString(project.resolve("run.yaml"), "model: tcn\nseed: 20\ndropout: 0.3\n");
+        Files.writeString(project.resolve("results.csv"), "auc\n0.9\n");
+
+        assertEquals(0, cli.run(new String[] {"changes"}), stderr());
+        String printed = stdout();
+        assertTrue(printed.contains("dropout"),
+                "the diff must say what changed, not just that it did: " + printed);
+        assertTrue(printed.contains("results.csv"), printed);
+    }
+
+    @Test
+    void noChangesIsStatedExplicitly() throws Exception {
+        givenAProfile();
+        llm.respondWith("a summary");
+        Path project = aProjectWith("model: tcn\nseed: 20\n");
+        cli.run(new String[] {"import", project.toString()});
+        out.reset();
+
+        assertEquals(0, cli.run(new String[] {"changes"}));
+        assertTrue(stdout().contains("No changes since"), stdout());
+    }
+
+    @Test
+    void theUsageMentionsImportAndChanges() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("import"), stdout());
+        assertTrue(stdout().contains("changes"), stdout());
     }
 }

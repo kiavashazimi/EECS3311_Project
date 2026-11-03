@@ -4,9 +4,13 @@ import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
+import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
 import ca.yorku.eecs3311.consultant.agent.ResearchConsultantAgent;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.context.ClaudeCodeContextProvider;
+import ca.yorku.eecs3311.consultant.context.FileBasedContextProvider;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
+import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
@@ -41,6 +45,7 @@ public class AppController {
     private final PaperDiscoveryAgent discovery;
     private final PaperAnalysisAgent analysis;
     private final ResearchConsultantAgent consultant;
+    private final ProjectContextAgent context;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -58,6 +63,9 @@ public class AppController {
         this.discovery = new PaperDiscoveryAgent(tools);
         this.analysis = new PaperAnalysisAgent(tools);
         this.consultant = new ResearchConsultantAgent(tools);
+        // the coding-agent adapter is probed first and falls back to files
+        this.context = new ProjectContextAgent(tools, List.of(
+                new ClaudeCodeContextProvider(), new FileBasedContextProvider()));
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -235,6 +243,92 @@ public class AppController {
      */
     public java.util.Optional<PaperAnalysis> findAnalysis(String paperId) {
         return memory.findAnalysis(paperId);
+    }
+
+    // --- F02 / F10: project context (UC02, UC09, SD02) ----------------------
+
+    /**
+     * Reads the researcher's own project directory into memory.
+     *
+     * <p>Which provider answers is decided at runtime: a directory with
+     * coding-agent context is read that way, anything else falls back to files,
+     * and the snapshot records which supplied the facts so the UI can say.
+     *
+     * @param projectPath the directory to import
+     * @return the facts, and prose about them which may be missing
+     * @throws AgentException if the directory cannot be read — nothing is stored
+     * @throws StorageException if the snapshot could not be written; it is kept
+     *     in memory
+     */
+    public ProjectContextAgent.ImportedContext importProjectContext(String projectPath)
+            throws AgentException, StorageException {
+        if (projectPath == null || projectPath.isBlank()) {
+            throw new IllegalArgumentException("projectPath must not be null or blank");
+        }
+        ContextSnapshot previous = memory.getLastSnapshot();
+        ProjectContextAgent.ImportedContext imported =
+                (ProjectContextAgent.ImportedContext) context.run(
+                        new ProjectContextAgent.Import(
+                                Path.of(projectPath.strip()),
+                                previous.getScannedAt().isBlank() ? null : previous));
+
+        memory.saveSnapshot(imported.snapshot());
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            throw new StorageException(
+                    "the project was read but could not be written to " + store.getFile(), e);
+        }
+        return imported;
+    }
+
+    /**
+     * Re-scans the stored project path and says what changed.
+     *
+     * @return prose describing the diff, or "" when the model is unavailable
+     * @throws AgentException if no project has been imported yet, or the path is
+     *     no longer readable — the previous snapshot is retained either way
+     */
+    public String summarizeProjectChanges() throws AgentException, StorageException {
+        ContextSnapshot previous = memory.getLastSnapshot();
+        if (previous.getScannedAt().isBlank()) {
+            // UC09 2a: point them at the import rather than showing an empty panel
+            throw new AgentException(
+                    "no project has been imported yet - import one first to have something "
+                            + "to compare against");
+        }
+
+        ProjectContextAgent.ImportedContext current =
+                (ProjectContextAgent.ImportedContext) context.run(
+                        new ProjectContextAgent.Import(
+                                Path.of(previous.getProjectPath()), previous));
+
+        String summary = context.summarizeChanges(previous, current.snapshot());
+        memory.saveSnapshot(current.snapshot());
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            throw new StorageException("the new snapshot could not be written", e);
+        }
+        return summary;
+    }
+
+    /** @return the deterministic change list, which needs no model */
+    public List<String> projectChanges() throws AgentException {
+        ContextSnapshot previous = memory.getLastSnapshot();
+        if (previous.getScannedAt().isBlank()) {
+            throw new AgentException("no project has been imported yet");
+        }
+        ProjectContextAgent.ImportedContext current =
+                (ProjectContextAgent.ImportedContext) context.run(
+                        new ProjectContextAgent.Import(
+                                Path.of(previous.getProjectPath()), previous));
+        return context.changesBetween(previous, current.snapshot());
+    }
+
+    /** @return the last imported snapshot; empty rather than null before the first */
+    public ContextSnapshot getLastSnapshot() {
+        return memory.getLastSnapshot();
     }
 
     // --- lifecycle -----------------------------------------------------------

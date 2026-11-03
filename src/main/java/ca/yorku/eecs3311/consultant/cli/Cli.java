@@ -1,6 +1,7 @@
 package ca.yorku.eecs3311.consultant.cli;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.config.Config;
 import ca.yorku.eecs3311.consultant.controller.AppController;
@@ -92,6 +93,10 @@ public class Cli {
                 return analyses();
             case "compare":
                 return compare(args);
+            case "import":
+                return importProject(args);
+            case "changes":
+                return changes();
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -261,6 +266,84 @@ public class Cli {
         return OK;
     }
 
+    // --- project context -----------------------------------------------------
+
+    private int importProject(String[] args) {
+        if (args.length < 2) {
+            err.println("'import' needs a directory, e.g. 'rc import ~/projects/my-study'.");
+            return USAGE_ERROR;
+        }
+
+        ProjectContextAgent.ImportedContext imported;
+        try {
+            imported = controller.importProjectContext(args[1]);
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        } catch (StorageException e) {
+            err.println(e.getMessage());
+            return STORAGE_ERROR;
+        }
+
+        var s = imported.snapshot();
+        out.println("Imported " + s.getProjectPath());
+        out.println("  facts from  : " + s.getProviderName());
+        out.println("  scanned at  : " + s.getScannedAt());
+        if (!s.getRecentCommits().isEmpty()) {
+            out.println("  commits     : " + s.getRecentCommits().size() + " recent");
+            s.getRecentCommits().forEach(c -> out.println("      " + c));
+        } else {
+            out.println("  commits     : none (not a git repository, or no history)");
+        }
+        if (!s.getConfigEntries().isEmpty()) {
+            out.println("  configs     : " + String.join(", ", s.getConfigEntries().keySet()));
+        }
+        if (!s.getResultFiles().isEmpty()) {
+            out.println("  results     : " + String.join(", ", s.getResultFiles()));
+        }
+        if (!s.getAgentDescription().isBlank()) {
+            out.println("  the project describes itself as:");
+            s.getAgentDescription().lines().limit(12)
+                    .forEach(line -> out.println("      " + line));
+        }
+        out.println();
+        out.println(imported.isSummaryMissing()
+                ? "(no summary - the language model was unavailable. The facts above stand;"
+                        + " run 'rc import' again to retry the summary.)"
+                : imported.summary());
+        out.println();
+        return OK;
+    }
+
+    private int changes() {
+        String summary;
+        List<String> changes;
+        try {
+            changes = controller.projectChanges();
+            summary = controller.summarizeProjectChanges();
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        } catch (StorageException e) {
+            err.println(e.getMessage());
+            return STORAGE_ERROR;
+        }
+
+        if (changes.isEmpty()) {
+            out.println(summary);
+            return OK;
+        }
+        out.println(changes.size() + " change(s) in your project:");
+        changes.forEach(c -> out.println("  - " + c));
+        out.println();
+        out.println(summary.isBlank()
+                ? "(no narrative - the language model was unavailable. The list above is"
+                        + " computed from the two snapshots and stands.)"
+                : summary);
+        out.println();
+        return OK;
+    }
+
     // --- profile -------------------------------------------------------------
 
     private int profile(String[] args) {
@@ -385,6 +468,8 @@ public class Cli {
                   analyze <paper id>        extract a paper's structure and strategy
                   analyses                  list every analysed paper
                   compare <paper id>        compare an analysed paper to your project
+                  import <directory>        read your own project's current state
+                  changes                   what changed in your project since last import
                   where                     print the file the project is stored in
                   help                      this message
 

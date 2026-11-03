@@ -1,0 +1,5 @@
+# fixture file - contents are not read by any test
+model: tcn_autoencoder
+dataset: lbnl59
+seed: 20
+dropout_injection: false

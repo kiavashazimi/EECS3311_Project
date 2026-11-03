@@ -1,6 +1,7 @@
 package ca.yorku.eecs3311.consultant.app;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
@@ -23,6 +24,8 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
+import javafx.stage.DirectoryChooser;
+import java.io.File;
 
 /**
  * The desktop client. Holds no domain logic: it collects input, calls
@@ -49,6 +52,8 @@ public class MainGUI {
     private final Button discover = new Button("Discover papers");
     private final Button analyze = new Button("Analyze selected");
     private final Button compare = new Button("Compare to my project");
+    private final Button importProject = new Button("Import my project");
+    private final Button whatChanged = new Button("What changed");
     private final TextArea detail = new TextArea();
 
     public MainGUI(AppController controller) {
@@ -72,6 +77,8 @@ public class MainGUI {
         compare.setDisable(true);
         analyze.setOnAction(e -> analyzeSelected());
         compare.setOnAction(e -> compareSelected());
+        importProject.setOnAction(e -> chooseAndImport());
+        whatChanged.setOnAction(e -> showChanges());
         feed.onSelectionChanged(this::refreshButtons);
 
         controller.loadStoredProject();
@@ -113,7 +120,8 @@ public class MainGUI {
         save.setOnAction(e -> save());
 
         status.setWrapText(true);
-        grid.add(new HBox(12, save, discover, analyze, compare, status), 1, row);
+        grid.add(new HBox(12, save, discover, analyze, compare), 1, row++);
+        grid.add(new HBox(12, importProject, whatChanged, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -194,6 +202,95 @@ public class MainGUI {
         ScrollPane pane = new ScrollPane(detail);
         pane.setFitToWidth(true);
         return pane;
+    }
+
+    /** F02 — pick a directory and read it. */
+    private void chooseAndImport() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Choose your project directory");
+        File chosen = chooser.showDialog(detail.getScene().getWindow());
+        if (chosen == null) {
+            return;
+        }
+
+        importProject.setDisable(true);
+        detail.setText("Reading " + chosen + "...");
+        runOffThread(() -> {
+            try {
+                ProjectContextAgent.ImportedContext imported =
+                        controller.importProjectContext(chosen.getAbsolutePath());
+                return describe(imported);
+            } catch (AgentException e) {
+                // UC02 1a: reported, nothing stored
+                return "Could not read that directory.\n\n" + e.getMessage();
+            } catch (StorageException e) {
+                return "The project was read but could not be saved.\n\n" + e.getMessage();
+            }
+        }, importProject);
+    }
+
+    /** F10 — re-scan the stored path and say what changed. */
+    private void showChanges() {
+        whatChanged.setDisable(true);
+        detail.setText("Checking for changes...");
+        runOffThread(() -> {
+            try {
+                var changes = controller.projectChanges();
+                String summary = controller.summarizeProjectChanges();
+                if (changes.isEmpty()) {
+                    return summary;
+                }
+                StringBuilder b = new StringBuilder(changes.size() + " change(s)\n\n");
+                changes.forEach(c -> b.append("   - ").append(c).append('\n'));
+                b.append('\n').append(summary.isBlank()
+                        ? "(no narrative - the language model was unavailable. The list above "
+                                + "is computed from the two snapshots and stands.)"
+                        : summary);
+                return b.toString();
+            } catch (AgentException e) {
+                // UC09 2a: point at the import rather than an empty panel
+                return e.getMessage();
+            } catch (StorageException e) {
+                return e.getMessage();
+            }
+        }, whatChanged);
+    }
+
+    private static String describe(ProjectContextAgent.ImportedContext imported) {
+        var s = imported.snapshot();
+        StringBuilder b = new StringBuilder();
+        b.append("Imported ").append(s.getProjectPath()).append("\n\n");
+        b.append("Facts from   ").append(s.getProviderName()).append('\n');
+        b.append("Scanned at   ").append(s.getScannedAt()).append('\n');
+        if (!s.getRecentCommits().isEmpty()) {
+            b.append("\nRecent commits\n");
+            s.getRecentCommits().forEach(c -> b.append("   ").append(c).append('\n'));
+        }
+        if (!s.getConfigEntries().isEmpty()) {
+            b.append("\nConfiguration\n");
+            s.getConfigEntries().forEach((k, v) ->
+                    b.append("   ").append(k).append("  ").append(v).append('\n'));
+        }
+        if (!s.getResultFiles().isEmpty()) {
+            b.append("\nResults: ").append(String.join(", ", s.getResultFiles())).append('\n');
+        }
+        b.append('\n').append(imported.isSummaryMissing()
+                ? "(no summary - the language model was unavailable. The facts above stand.)"
+                : imported.summary());
+        return b.toString();
+    }
+
+    /** Runs work off the FX thread and puts its text in the detail pane. */
+    private void runOffThread(java.util.function.Supplier<String> work, Button toReenable) {
+        Thread worker = new Thread(() -> {
+            String text = work.get();
+            Platform.runLater(() -> {
+                detail.setText(text);
+                toReenable.setDisable(false);
+            });
+        }, "gui-worker");
+        worker.setDaemon(true);
+        worker.start();
     }
 
     /**
