@@ -9,6 +9,7 @@ import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.literature.ArxivSource;
@@ -97,6 +98,8 @@ public class Cli {
                 return importProject(args);
             case "changes":
                 return changes();
+            case "landscape":
+                return landscape();
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -344,6 +347,42 @@ public class Cli {
         return OK;
     }
 
+    // --- landscape -----------------------------------------------------------
+
+    private int landscape() {
+        StrategyNode root = controller.buildSolutionLandscape();
+
+        if (root.paperCount() == 0) {
+            out.println("Nothing to map yet. Analyse a paper first with 'rc analyze <id>'.");
+            return OK;
+        }
+        out.println("Solution landscape - " + root.paperCount() + " analysed paper(s)");
+        if (controller.tooFewPapersForLandscape()) {
+            // UC12 3a: say so rather than inventing branches from one paper
+            out.println("(too few papers for branch summaries - the seeded families are"
+                    + " shown as they are)");
+        }
+        out.println();
+        printNode(root, "");
+        return OK;
+    }
+
+    /** Walks the tree without asking whether a node is a leaf or a branch. */
+    private void printNode(StrategyNode node, String indent) {
+        for (StrategyNode child : node.getChildren()) {
+            out.println(indent + "- " + child.getName()
+                    + "  [" + child.paperCount() + "]"
+                    + (child.isOwnApproach() ? "   <-- your approach" : ""));
+            if (!child.isMainIdeaMissing()) {
+                out.println(indent + "    " + child.getMainIdea());
+            }
+            for (PaperAnalysis paper : child.getPapers()) {
+                out.println(indent + "    . " + paper.getPaper().getTitle());
+            }
+            printNode(child, indent + "    ");
+        }
+    }
+
     // --- profile -------------------------------------------------------------
 
     private int profile(String[] args) {
@@ -470,6 +509,8 @@ public class Cli {
                   compare <paper id>        compare an analysed paper to your project
                   import <directory>        read your own project's current state
                   changes                   what changed in your project since last import
+                  landscape                 the space of solution approaches, and where
+                                            your own approach sits in it
                   where                     print the file the project is stored in
                   help                      this message
 

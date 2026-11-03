@@ -3,6 +3,7 @@ package ca.yorku.eecs3311.consultant.agent;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.domain.Comparability;
@@ -10,6 +11,8 @@ import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.StrategyNode;
+import ca.yorku.eecs3311.consultant.analysis.StrategyTaxonomy;
 import ca.yorku.eecs3311.consultant.llm.FakeLLMClient;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -169,5 +172,165 @@ class ResearchConsultantAgentTest {
                 () -> new ResearchConsultantAgent(tools, null));
         assertThrows(IllegalArgumentException.class,
                 () -> new ResearchConsultantAgent(tools).compare(null, myProject()));
+    }
+
+    // --- F13: the solution landscape (UC12) ---------------------------------
+
+    private static PaperAnalysis tagged(String id, String... tags) {
+        PaperAnalysis a = new PaperAnalysis(
+                new PaperRecord(id, "Paper " + id, "arXiv", "2026-01-01"));
+        a.setStrategyTags(List.of(tags));
+        a.setMethod("method of " + id);
+        return a;
+    }
+
+    private static StrategyNode landscape(String llmReply, PaperAnalysis... papers) {
+        ToolManager tools = new ToolManager(new FakeLLMClient().respondWith(llmReply));
+        return new ResearchConsultantAgent(tools).buildLandscape(List.of(papers), myProject());
+    }
+
+    @Test
+    void papersArePlacedUnderTheFamilyOfTheirStrategy() {
+        StrategyNode root = landscape("{}",
+                tagged("1", "diffusion model"),
+                tagged("2", "data augmentation"),
+                tagged("3", "resampling"));
+
+        assertEquals(2, root.getChildren().size(), root.getChildren().toString());
+        assertEquals(2, root.find("Data-level approaches").paperCount());
+        assertEquals(1, root.find("Generative approaches").paperCount());
+        assertEquals(3, root.paperCount(), "every paper must be somewhere");
+    }
+
+    @Test
+    void aPaperMatchingNoFamilyGoesUnderUnclassified() {
+        // UC12 5a: never forced into the nearest branch
+        StrategyNode root = landscape("{}", tagged("1"), tagged("2"), tagged("3"));
+
+        StrategyNode unclassified = root.find(StrategyTaxonomy.UNCLASSIFIED);
+        assertNotNull(unclassified, "the node must exist: " + root.getChildren());
+        assertEquals(3, unclassified.paperCount());
+    }
+
+    @Test
+    void emptySeededFamiliesArePruned() {
+        StrategyNode root = landscape("{}", tagged("1", "diffusion model"));
+
+        assertEquals(1, root.getChildren().size(),
+                "an empty family is noise on screen: " + root.getChildren());
+    }
+
+    @Test
+    void theResearchersOwnBranchIsMarked() {
+        ProjectProfile mine = myProject();
+        mine.setModels(List.of("conditional diffusion model"));
+
+        ToolManager tools = new ToolManager(new FakeLLMClient().respondWith("{}"));
+        StrategyNode root = new ResearchConsultantAgent(tools)
+                .buildLandscape(List.of(tagged("1", "diffusion model"),
+                        tagged("2", "resampling"), tagged("3", "data augmentation")), mine);
+
+        assertTrue(root.find("Generative approaches").isOwnApproach());
+        assertFalse(root.find("Data-level approaches").isOwnApproach());
+    }
+
+    @Test
+    void noBranchIsMarkedWhenTheProfileSaysNothingAboutMethod() {
+        // UC12 7a: not guessed
+        ProjectProfile vague = new ProjectProfile("can this be improved somehow?");
+        vague.setDatasets(List.of("MIMIC-CXR"));
+        vague.setMetrics(List.of("AUROC"));
+
+        ToolManager tools = new ToolManager(new FakeLLMClient().respondWith("{}"));
+        StrategyNode root = new ResearchConsultantAgent(tools)
+                .buildLandscape(List.of(tagged("1", "diffusion model")), vague);
+
+        assertTrue(root.flatten().stream().noneMatch(StrategyNode::isOwnApproach));
+    }
+
+    @Test
+    void branchSummariesComeFromOneCallKeyedByFamilyName() {
+        StrategyNode root = landscape(
+                "{\"Generative approaches\":\"they synthesise new examples\","
+                        + "\"Data-level approaches\":\"they change what is trained on\"}",
+                tagged("1", "diffusion model"), tagged("2", "resampling"),
+                tagged("3", "data augmentation"));
+
+        assertEquals("they synthesise new examples",
+                root.find("Generative approaches").getMainIdea());
+        assertFalse(root.find("Data-level approaches").isMainIdeaMissing());
+    }
+
+    @Test
+    void tooFewPapersLeavesTheSummariesUnwrittenRatherThanInvented() {
+        // UC12 3a: sub-branches from two papers would be noise as structure
+        FakeLLMClient llm = new FakeLLMClient().respondWith("{\"x\":\"y\"}");
+        ToolManager tools = new ToolManager(llm);
+        StrategyNode root = new ResearchConsultantAgent(tools)
+                .buildLandscape(List.of(tagged("1", "diffusion model")), myProject());
+
+        assertEquals(1, root.paperCount());
+        assertEquals(0, llm.callCount(), "the model must not be called for one paper");
+        assertTrue(root.find("Generative approaches").isMainIdeaMissing());
+    }
+
+    @Test
+    void whenTheModelIsUnavailableTheTreeStillStands() {
+        // UC12 6a
+        ToolManager tools = new ToolManager(new FakeLLMClient().failWith("no key"));
+        StrategyNode root = new ResearchConsultantAgent(tools)
+                .buildLandscape(List.of(tagged("1", "diffusion model"),
+                        tagged("2", "resampling"), tagged("3", "data augmentation")),
+                        myProject());
+
+        assertEquals(3, root.paperCount(), "the structure is deterministic");
+        assertTrue(root.find("Generative approaches").isMainIdeaMissing(),
+                "the UI must be able to say the summary is unavailable");
+    }
+
+    @Test
+    void anEmptyLandscapeIsNotAnError() {
+        StrategyNode root = landscape("{}");
+        assertEquals(0, root.paperCount());
+        assertTrue(root.getChildren().isEmpty(), "everything was pruned");
+    }
+
+    @Test
+    void summarizeBranchWorksOnALeafAndOnABranchAlike() {
+        StrategyNode root = landscape(
+                "{\"Generative approaches\":\"they synthesise new examples\"}",
+                tagged("1", "diffusion model"), tagged("2", "diffusion model"),
+                tagged("3", "diffusion model"));
+        ResearchConsultantAgent agent =
+                new ResearchConsultantAgent(new ToolManager(new FakeLLMClient()));
+
+        String branch = agent.summarizeBranch(root);
+        String leaf = agent.summarizeBranch(root.find("Generative approaches"));
+
+        assertTrue(branch.contains("3 paper(s)"), branch);
+        assertTrue(leaf.contains("3 paper(s)"), leaf);
+        assertTrue(leaf.contains("they synthesise new examples"), leaf);
+    }
+
+    @Test
+    void summarizeBranchMarksTheResearchersOwn() {
+        ProjectProfile mine = myProject();
+        mine.setModels(List.of("diffusion model"));
+        ToolManager tools = new ToolManager(new FakeLLMClient().respondWith("{}"));
+        ResearchConsultantAgent agent = new ResearchConsultantAgent(tools);
+        StrategyNode root = agent.buildLandscape(List.of(tagged("1", "diffusion model")), mine);
+
+        assertTrue(agent.summarizeBranch(root.find("Generative approaches"))
+                .contains("your approach"));
+    }
+
+    @Test
+    void buildLandscapeRejectsNullArguments() {
+        ResearchConsultantAgent agent =
+                new ResearchConsultantAgent(new ToolManager(new FakeLLMClient()));
+        assertThrows(IllegalArgumentException.class,
+                () -> agent.buildLandscape(null, myProject()));
+        assertThrows(IllegalArgumentException.class, () -> agent.buildLandscape(List.of(), null));
+        assertThrows(IllegalArgumentException.class, () -> agent.summarizeBranch(null));
     }
 }

@@ -9,6 +9,7 @@ import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
+import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import java.util.ArrayList;
 import java.util.List;
 import javafx.application.Platform;
@@ -17,6 +18,8 @@ import javafx.scene.control.Button;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
+import javafx.scene.control.TreeItem;
+import javafx.scene.control.TreeView;
 import javafx.scene.control.TextField;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.GridPane;
@@ -54,6 +57,8 @@ public class MainGUI {
     private final Button compare = new Button("Compare to my project");
     private final Button importProject = new Button("Import my project");
     private final Button whatChanged = new Button("What changed");
+    private final Button strategies = new Button("Strategies");
+    private final TreeView<StrategyNode> tree = new TreeView<>();
     private final TextArea detail = new TextArea();
 
     public MainGUI(AppController controller) {
@@ -65,7 +70,7 @@ public class MainGUI {
         BorderPane root = new BorderPane();
         root.setPadding(new Insets(16));
         root.setTop(header());
-        root.setCenter(new VBox(8, form(), feed.node(), detailPane()));
+        root.setCenter(new VBox(8, form(), feed.node(), tree, detailPane()));
         root.setBottom(footer());
 
         // the feed is registered as an observer; the agent never sees this class
@@ -79,6 +84,30 @@ public class MainGUI {
         compare.setOnAction(e -> compareSelected());
         importProject.setOnAction(e -> chooseAndImport());
         whatChanged.setOnAction(e -> showChanges());
+        strategies.setOnAction(e -> showLandscape());
+
+        // hidden until there is a landscape to show
+        tree.setManaged(false);
+        tree.setVisible(false);
+        tree.setPrefHeight(220);
+        tree.setShowRoot(false);
+        tree.setCellFactory(view -> new javafx.scene.control.TreeCell<>() {
+            @Override
+            protected void updateItem(StrategyNode node, boolean empty) {
+                super.updateItem(node, empty);
+                if (empty || node == null) {
+                    setText(null);
+                    return;
+                }
+                setText(node.getName() + "  [" + node.paperCount() + "]"
+                        + (node.isOwnApproach() ? "   <- your approach" : ""));
+            }
+        });
+        tree.getSelectionModel().selectedItemProperty().addListener((obs, before, after) -> {
+            if (after != null) {
+                detail.setText(controller.describeBranch(after.getValue()));
+            }
+        });
         feed.onSelectionChanged(this::refreshButtons);
 
         controller.loadStoredProject();
@@ -121,7 +150,7 @@ public class MainGUI {
 
         status.setWrapText(true);
         grid.add(new HBox(12, save, discover, analyze, compare), 1, row++);
-        grid.add(new HBox(12, importProject, whatChanged, status), 1, row);
+        grid.add(new HBox(12, importProject, whatChanged, strategies, status), 1, row);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -202,6 +231,51 @@ public class MainGUI {
         ScrollPane pane = new ScrollPane(detail);
         pane.setFitToWidth(true);
         return pane;
+    }
+
+    /**
+     * F13 — build the landscape and show it as a tree.
+     *
+     * <p>One recursive method fills the whole tree without asking whether a
+     * node is a leaf or a branch, which is what the Composite is for.
+     */
+    private void showLandscape() {
+        strategies.setDisable(true);
+        detail.setText("Building the solution landscape...");
+
+        Thread worker = new Thread(() -> {
+            StrategyNode root = controller.buildSolutionLandscape();
+            boolean tooFew = controller.tooFewPapersForLandscape();
+            Platform.runLater(() -> {
+                strategies.setDisable(false);
+                if (root.paperCount() == 0) {
+                    tree.setManaged(false);
+                    tree.setVisible(false);
+                    detail.setText("Nothing to map yet. Analyse a paper first.");
+                    return;
+                }
+                tree.setRoot(asTreeItem(root));
+                tree.setManaged(true);
+                tree.setVisible(true);
+                detail.setText(root.paperCount() + " analysed paper(s)."
+                        + (tooFew
+                                ? "\n\nToo few papers for branch summaries - the seeded "
+                                        + "families are shown as they are."
+                                : "\n\nSelect a branch to see what it covers."));
+            });
+        }, "build-landscape");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** Recurses to any depth with no test for leaf versus branch. */
+    private static TreeItem<StrategyNode> asTreeItem(StrategyNode node) {
+        TreeItem<StrategyNode> item = new TreeItem<>(node);
+        item.setExpanded(true);
+        for (StrategyNode child : node.getChildren()) {
+            item.getChildren().add(asTreeItem(child));
+        }
+        return item;
     }
 
     /** F02 — pick a directory and read it. */

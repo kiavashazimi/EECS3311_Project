@@ -536,4 +536,87 @@ class CliTest {
         assertTrue(stdout().contains("import"), stdout());
         assertTrue(stdout().contains("changes"), stdout());
     }
+
+    // --- landscape -----------------------------------------------------------
+
+    private void givenAnalysedPapers(String... tagPerPaper) {
+        givenAProfile();
+        for (int i = 0; i < tagPerPaper.length; i++) {
+            String id = "p" + i;
+            source.returning(paper(id, "Paper " + i));
+            llm.respondWith("{\"problem\":\"p\",\"method\":\"m\",\"dataset\":\"MIMIC-CXR\","
+                    + "\"model\":\"m\",\"metrics\":[\"AUROC\"],\"results\":\"r\","
+                    + "\"limitations\":\"l\",\"strategy_tags\":[\"" + tagPerPaper[i] + "\"]}");
+            cli.run(new String[] {"analyze", id});
+        }
+        out.reset();
+        err.reset();
+    }
+
+    @Test
+    void landscapeGroupsPapersUnderSeededFamilies() {
+        givenAnalysedPapers("diffusion", "resampling", "data augmentation");
+        llm.respondWith("{\"Generative approaches\":\"they synthesise examples\","
+                + "\"Data-level approaches\":\"they change the training data\"}");
+
+        assertEquals(0, cli.run(new String[] {"landscape"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("Generative approaches"), printed);
+        assertTrue(printed.contains("Data-level approaches"), printed);
+        assertTrue(printed.contains("they synthesise examples"), printed);
+        assertTrue(printed.contains("3 analysed paper"), printed);
+    }
+
+    @Test
+    void landscapeSaysSoWhenNothingHasBeenAnalysed() {
+        givenAProfile();
+        assertEquals(0, cli.run(new String[] {"landscape"}));
+        assertTrue(stdout().toLowerCase().contains("nothing to map"), stdout());
+    }
+
+    @Test
+    void landscapeStatesWhenThereAreTooFewPapersForSummaries() {
+        givenAnalysedPapers("diffusion");
+        assertEquals(0, cli.run(new String[] {"landscape"}));
+        assertTrue(stdout().contains("too few papers"),
+                "UC12 3a: say it rather than leave the gap unexplained: " + stdout());
+    }
+
+    @Test
+    void landscapeMarksTheResearchersOwnBranch() {
+        // the profile's models mention a diffusion model
+        cli.run(new String[] {
+            "profile", "set", "--question", "do synthetic X-rays help?",
+            "--datasets", "MIMIC-CXR", "--metrics", "AUROC",
+            "--models", "conditional diffusion model",
+        });
+        for (int i = 0; i < 3; i++) {
+            source.returning(paper("q" + i, "Paper " + i));
+            llm.respondWith("{\"method\":\"m\",\"dataset\":\"MIMIC-CXR\","
+                    + "\"metrics\":[\"AUROC\"],\"strategy_tags\":[\"diffusion\"]}");
+            cli.run(new String[] {"analyze", "q" + i});
+        }
+        out.reset();
+        llm.respondWith("{}");
+
+        cli.run(new String[] {"landscape"});
+        assertTrue(stdout().contains("your approach"), stdout());
+    }
+
+    @Test
+    void landscapeKeepsTheTreeWhenTheModelIsUnavailable() {
+        givenAnalysedPapers("diffusion", "resampling", "data augmentation");
+        llm.failWith("no key");
+
+        assertEquals(0, cli.run(new String[] {"landscape"}));
+        assertTrue(stdout().contains("Generative approaches"),
+                "the structure is deterministic: " + stdout());
+    }
+
+    @Test
+    void theUsageMentionsLandscape() {
+        cli.run(new String[] {"help"});
+        assertTrue(stdout().contains("landscape"), stdout());
+    }
 }

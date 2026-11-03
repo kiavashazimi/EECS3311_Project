@@ -14,6 +14,7 @@ import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
+import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
 import ca.yorku.eecs3311.consultant.literature.SearchIntent;
@@ -329,6 +330,34 @@ public class AppController {
     /** @return the last imported snapshot; empty rather than null before the first */
     public ContextSnapshot getLastSnapshot() {
         return memory.getLastSnapshot();
+    }
+
+    // --- F13: the solution landscape (UC12) ---------------------------------
+
+    /**
+     * Builds the tree of solution approaches from the stored analyses.
+     *
+     * <p>Derived state, deliberately not persisted: it is computed from the
+     * analyses, and storing generated prose beside them would let a saved tree
+     * silently disagree with the papers it came from. Rebuilding costs one
+     * model call.
+     *
+     * @return the root. Empty families are pruned, so an empty tree means
+     *     nothing has been analysed yet.
+     */
+    public StrategyNode buildSolutionLandscape() {
+        return consultant.buildLandscape(memory.getPaperAnalyses(), memory.getProfile());
+    }
+
+    /** @return one line about a branch, usable at any depth */
+    public String describeBranch(StrategyNode node) {
+        return consultant.summarizeBranch(node);
+    }
+
+    /** @return true when there are too few papers for sub-branch summaries */
+    public boolean tooFewPapersForLandscape() {
+        return ResearchConsultantAgent.tooFewPapersForBranchSummaries(
+                memory.getPaperAnalyses().size());
     }
 
     // --- lifecycle -----------------------------------------------------------

@@ -6,6 +6,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import java.util.regex.Pattern;
 
 /**
@@ -172,5 +173,84 @@ public class StrategyTaxonomy {
     /** @return every canonical tag, read-only */
     public List<String> getKnownStrategies() {
         return List.copyOf(new ArrayList<>(known.keySet()));
+    }
+
+    // --- the seeded top level of the solution landscape ---------------------
+
+    /**
+     * The fixed families of approach, and which canonical tags belong to each.
+     *
+     * <p>Seeded rather than derived. UC12 flow 3a requires a usable tree from
+     * one or two analysed papers, and sub-branches invented from two papers
+     * would be noise presented as structure. The top level is therefore stable
+     * and the model only proposes what sits <em>beneath</em> it.
+     */
+    private static final Map<String, List<String>> FAMILIES = families();
+
+    private static Map<String, List<String>> families() {
+        Map<String, List<String>> f = new LinkedHashMap<>();
+        f.put("Data-level approaches", List.of("data augmentation",
+                "synthetic data generation", "resampling", "reweighting"));
+        f.put("Generative approaches", List.of("generative model", "diffusion model",
+                "generative adversarial network", "variational autoencoder",
+                "conditional generation", "counterfactual generation"));
+        f.put("Training-level approaches", List.of("adversarial training", "curriculum learning",
+                "multi-task learning", "transfer learning", "fine-tuning",
+                "self-supervised pretraining", "contrastive learning", "active learning",
+                "federated learning", "prompt engineering", "retrieval augmentation"));
+        f.put("Model-level approaches", List.of("transformer architecture",
+                "convolutional architecture", "ensembling", "regularization",
+                "knowledge distillation", "reinforcement learning"));
+        f.put("Constraint and representation approaches", List.of("fairness constraint",
+                "representation disentanglement", "causal intervention", "domain adaptation"));
+        f.put("Post-hoc approaches", List.of("post-hoc calibration"));
+        return f;
+    }
+
+    /** The node every paper that fits no family is placed under (UC12 5a). */
+    public static final String UNCLASSIFIED = "Unclassified";
+
+    private StrategyNode root;
+
+    /**
+     * Builds a fresh top level: a root with one child per family, plus
+     * {@code Unclassified}.
+     *
+     * @return the new root, which also becomes {@link #getRoot()}
+     */
+    public StrategyNode seedRoots() {
+        StrategyNode seeded = new StrategyNode("Solution landscape");
+        for (String family : FAMILIES.keySet()) {
+            seeded.add(new StrategyNode(family));
+        }
+        // explicit, so a paper that fits nothing is never forced into the
+        // nearest branch just to avoid an empty slot
+        seeded.add(new StrategyNode(UNCLASSIFIED));
+        this.root = seeded;
+        return seeded;
+    }
+
+    /** @return the current root, seeding one if none exists yet */
+    public StrategyNode getRoot() {
+        return root == null ? seedRoots() : root;
+    }
+
+    /**
+     * @param tag a canonical strategy tag
+     * @return the family it belongs to, or {@link #UNCLASSIFIED}
+     */
+    public String familyOf(String tag) {
+        String canonical = canonical(tag);
+        for (Map.Entry<String, List<String>> family : FAMILIES.entrySet()) {
+            if (family.getValue().contains(canonical)) {
+                return family.getKey();
+            }
+        }
+        return UNCLASSIFIED;
+    }
+
+    /** @return the family names, in seeded order, without Unclassified */
+    public List<String> getFamilies() {
+        return List.copyOf(new ArrayList<>(FAMILIES.keySet()));
     }
 }
