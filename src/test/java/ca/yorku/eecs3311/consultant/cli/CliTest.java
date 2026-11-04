@@ -738,4 +738,127 @@ class CliTest {
         cli.run(new String[] {"help"});
         assertTrue(stdout().contains("repo"), stdout());
     }
+
+    // --- row numbers from the listing ---------------------------------------
+
+    /**
+     * Discovery that leaves a two-row listing behind, with ids shaped like real
+     * arXiv ids so they cannot be confused with row numbers.
+     */
+    private void givenATwoRowListing() {
+        givenAProfile();
+        source.returning(paper("2304.09218v1", "Generative models improve fairness"),
+                paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2304.09218v1\",\"score\":96,"
+                + "\"why\":\"closest\"},{\"id\":\"2412.20374v2\",\"score\":93,"
+                + "\"why\":\"fair diffusion\"}]}");
+        cli.run(new String[] {"discover"});
+        out.reset();
+        err.reset();
+    }
+
+    @Test
+    void analyzeAcceptsTheRowNumberShownByDiscover() {
+        givenATwoRowListing();
+        llm.respondWith(ANALYSIS_REPLY);
+
+        assertEquals(0, cli.run(new String[] {"analyze", "2"}), stderr());
+
+        assertTrue(source.queriesSeen().contains("id:2412.20374v2"),
+                "row 2 must become the second listed id, not be sent as the id \"2\": "
+                        + source.queriesSeen());
+    }
+
+    @Test
+    void theRowNumbersMatchThePositionsThatWerePrinted() {
+        givenATwoRowListing();
+        llm.respondWith(ANALYSIS_REPLY);
+
+        cli.run(new String[] {"analyze", "1"});
+
+        assertTrue(source.queriesSeen().contains("id:2304.09218v1"),
+                "numbering starts at 1, as the listing shows it: " + source.queriesSeen());
+    }
+
+    @Test
+    void aRowNumberPastTheEndOfTheListingSaysHowManyThereAre() {
+        givenATwoRowListing();
+
+        assertNotEquals(0, cli.run(new String[] {"analyze", "7"}));
+        String complaint = stderr();
+        assertTrue(complaint.contains("2"), "it should say how long the listing is: " + complaint);
+        assertFalse(source.queriesSeen().contains("id:7"),
+                "an out-of-range row must not be sent to the literature source");
+    }
+
+    @Test
+    void aNumberWithNoListingIsLookedUpAsAnIdAndThenExplained() {
+        // it cannot be a row number when nothing has been numbered, so it is
+        // tried as an id; only once that fails is the likely mistake named
+        givenAProfile();
+        source.returning();
+
+        assertNotEquals(0, cli.run(new String[] {"analyze", "2"}));
+        assertTrue(source.queriesSeen().contains("id:2"),
+                "with no listing the number must be tried as an id: " + source.queriesSeen());
+        assertTrue(stderr().contains("rc discover"),
+                "the likely mistake should be named: " + stderr());
+    }
+
+    @Test
+    void anIdThatHappensToBeDigitsIsStillTreatedAsAnId() {
+        // ambiguity is resolved towards the id, because an id is what the user
+        // literally typed; a row number is only a shorthand for one
+        givenAProfile();
+        source.returning(paper("2", "A paper whose id really is 2"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2\",\"score\":50,\"why\":\"ok\"}]}");
+        cli.run(new String[] {"discover"});
+        out.reset();
+        llm.respondWith(ANALYSIS_REPLY);
+
+        assertEquals(0, cli.run(new String[] {"analyze", "2"}), stderr());
+
+        assertTrue(source.queriesSeen().contains("id:2"),
+                "the listed id wins over the row number: " + source.queriesSeen());
+    }
+
+    @Test
+    void anUnusableReferenceNamesBothFormsThatAreAccepted() {
+        givenATwoRowListing();
+
+        assertNotEquals(0, cli.run(new String[] {"analyze", "99"}));
+        String complaint = stderr();
+        assertTrue(complaint.contains("rc discover"),
+                "the message must say where the numbers come from: " + complaint);
+    }
+
+    @Test
+    void compareAcceptsARowNumberToo() {
+        givenATwoRowListing();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2"});
+        out.reset();
+        err.reset();
+
+        // row 2 must resolve to the paper that was just analysed, so compare
+        // finds it rather than reporting it unanalysed
+        llm.respondWith("{\"comparable\":false,\"reasons\":[\"different data\"],"
+                + "\"similarities\":[],\"differences\":[],\"summary\":\"n/a\"}");
+        assertEquals(0, cli.run(new String[] {"compare", "2"}), stderr());
+    }
+
+    @Test
+    void repoAcceptsARowNumberToo() {
+        givenATwoRowListing();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2"});
+        out.reset();
+        err.reset();
+
+        assertEquals(0, cli.run(new String[] {"repo", "2"}), stderr());
+        assertFalse(stderr().contains("not been analysed"),
+                "row 2 should resolve before the analysed check runs: " + stderr());
+    }
 }

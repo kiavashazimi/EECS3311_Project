@@ -102,10 +102,10 @@ each.
 # 2. find papers that matter for it, ranked with a reason each
 ./rc discover
 
-# 3. work on one paper
+# 3. work on one paper, by its arXiv id or by its row number in that listing
 ./rc analyze 2412.20374v2     # extract its structure and tag its strategy
-./rc compare 2412.20374v2     # can its numbers be compared with yours?
-./rc repo    2412.20374v2     # does its code exist and look reusable?
+./rc compare 2                # can its numbers be compared with yours?
+./rc repo    2                # does its code exist and look reusable?
 
 # 4. your own project
 ./rc import ~/projects/my-study   # read its current state

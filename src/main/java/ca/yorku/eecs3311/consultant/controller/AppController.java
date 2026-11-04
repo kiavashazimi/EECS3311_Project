@@ -24,6 +24,7 @@ import ca.yorku.eecs3311.consultant.memory.MemoryStore;
 import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -131,7 +132,41 @@ public class AppController {
      */
     @SuppressWarnings("unchecked")
     public List<RankedPaper> discoverPapers() throws AgentException {
-        return (List<RankedPaper>) discovery.run(memory.getProfile());
+        List<RankedPaper> ranked = (List<RankedPaper>) discovery.run(memory.getProfile());
+        rememberListing(ranked);
+        return ranked;
+    }
+
+    /**
+     * Stores the display order so a client can later resolve a row number
+     * back to a paper id.
+     *
+     * <p>A failed write is swallowed deliberately, and only here. Row numbers
+     * are a convenience; the papers themselves are the result of the call and
+     * are already in hand. Turning a disk problem into an exception would
+     * discard a search the researcher has paid a model call for, in order to
+     * report that a shortcut will not work.
+     */
+    private void rememberListing(List<RankedPaper> ranked) {
+        List<String> ids = new ArrayList<>();
+        for (RankedPaper r : ranked) {
+            ids.add(r.paper().getId());
+        }
+        memory.saveLastListing(ids);
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            // the listing is still correct in memory for this process
+        }
+    }
+
+    /**
+     * @return the paper ids of the last listing shown, in display order, so a
+     *     client can turn the position a researcher read off the screen back
+     *     into an id. Empty when no discovery has run yet
+     */
+    public List<String> getLastListing() {
+        return memory.getLastListing();
     }
 
     /**

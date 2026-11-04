@@ -216,4 +216,39 @@ class MemoryStoreTest {
         assertTrue(store.load(memory));
         assertEquals("2026-11-03T10:00", memory.getLastSnapshot().getScannedAt());
     }
+
+    // --- the last discovery listing -----------------------------------------
+
+    @Test
+    void theListingSurvivesAcrossProcesses() throws IOException {
+        // every rc invocation is a fresh JVM, so a row number typed after
+        // 'rc discover' can only be resolved from the file
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        memory.saveLastListing(List.of("2304.09218v1", "2412.20374v2", "2311.09402v2"));
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+        memory.clear();
+        assertTrue(store.load(memory));
+
+        assertEquals(List.of("2304.09218v1", "2412.20374v2", "2311.09402v2"),
+                memory.getLastListing(),
+                "the order shown on screen is the order the numbers refer to");
+    }
+
+    @Test
+    void aFileWrittenBeforeListingsExistedStillLoads() throws IOException {
+        // forward compatibility: files already on disk have no listing field
+        Path file = tempDir.resolve("project-memory.json");
+        Files.writeString(file, """
+                {"profile":{"researchQuestion":"q"},"papers":[]}
+                """);
+
+        ProjectMemory memory = ProjectMemory.getInstance();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertTrue(store.load(memory), "an older file must not be treated as corrupt");
+        assertTrue(memory.getLastListing().isEmpty());
+    }
 }

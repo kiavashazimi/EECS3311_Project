@@ -158,20 +158,89 @@ public class Cli {
         return OK;
     }
 
+    // --- paper references ----------------------------------------------------
+
+    /**
+     * Turns what the researcher typed into a paper id.
+     *
+     * <p>{@code discover} prints a numbered list, so the number is the obvious
+     * thing to type next. Accepting only the arXiv id made the CLI show a
+     * numbered list and then refuse its own numbers.
+     *
+     * <p>An exact id in the listing wins over a row number, and a number is
+     * read as a row only when there is a listing to count against. The two
+     * forms can collide only when a paper's id is itself a bare integer, and
+     * then the literal thing the researcher typed is the better reading: a row
+     * number is only ever a shorthand for an id.
+     *
+     * @param ref the id or row number as typed
+     * @param command the command name, for the error message
+     * @return the resolved paper id, or null when the reference cannot mean
+     *     anything, in which case the complaint has already been printed
+     */
+    private String resolveRef(String ref, String command) {
+        String typed = ref.strip();
+        List<String> listing = controller.getLastListing();
+        if (listing.contains(typed)) {
+            return typed;
+        }
+        if (!typed.matches("\\d{1,4}")) {
+            // every arXiv id carries a '.' or a '/', so this is an id, not a row
+            return typed;
+        }
+
+        if (listing.isEmpty()) {
+            // with nothing numbered, a number cannot be a row; it is an id, and
+            // a wrong one is reported by whoever looks it up
+            return typed;
+        }
+
+        int row = Integer.parseInt(typed);
+        if (row < 1 || row > listing.size()) {
+            err.println("There is no row " + row + "; the last listing had "
+                    + listing.size() + " papers.");
+            err.println("Run 'rc discover' to see it again, or pass the arXiv id, e.g."
+                    + " 'rc " + command + " 2412.20374v2'.");
+            return null;
+        }
+        return listing.get(row - 1);
+    }
+
+    /**
+     * Explains the numbered list when a bare number was looked up as an id and
+     * found nothing.
+     *
+     * <p>Typing the row number before running {@code discover} is the natural
+     * mistake, and "no paper found with id 2" does not hint at the cause.
+     */
+    private void hintIfItLookedLikeARowNumber(String ref) {
+        if (ref.strip().matches("\\d{1,4}") && controller.getLastListing().isEmpty()) {
+            err.println("If that was a row number, run 'rc discover' first - the numbers"
+                    + " come from its listing.");
+        }
+    }
+
     // --- analyze -------------------------------------------------------------
 
     private int analyze(String[] args) {
         if (args.length < 2) {
-            err.println("'analyze' needs a paper id, e.g. 'rc analyze 2304.09218v1'.");
-            err.println("Run 'rc discover' to see ids.");
+            err.println("'analyze' needs a paper id or a row number, e.g."
+                    + " 'rc analyze 2304.09218v1' or 'rc analyze 2'.");
+            err.println("Run 'rc discover' to see the numbered list.");
+            return USAGE_ERROR;
+        }
+
+        String id = resolveRef(args[1], "analyze");
+        if (id == null) {
             return USAGE_ERROR;
         }
 
         PaperAnalysis analysis;
         try {
-            analysis = controller.analyzePaperById(args[1]);
+            analysis = controller.analyzePaperById(id);
         } catch (AgentException e) {
             err.println(e.getMessage());
+            hintIfItLookedLikeARowNumber(args[1]);
             return AGENT_ERROR;
         } catch (StorageException e) {
             // the analysis survives in memory; say so rather than implying it is lost
@@ -224,7 +293,10 @@ public class Cli {
             err.println("'compare' needs a paper id, e.g. 'rc compare 2304.09218v1'.");
             return USAGE_ERROR;
         }
-        String id = args[1];
+        String id = resolveRef(args[1], "compare");
+        if (id == null) {
+            return USAGE_ERROR;
+        }
 
         PaperAnalysis stored = controller.findAnalysis(id).orElse(null);
         if (stored == null) {
@@ -357,7 +429,10 @@ public class Cli {
             err.println("'repo' needs a paper id, e.g. 'rc repo 2412.20374v2'.");
             return USAGE_ERROR;
         }
-        String id = args[1];
+        String id = resolveRef(args[1], "repo");
+        if (id == null) {
+            return USAGE_ERROR;
+        }
 
         PaperAnalysis stored = controller.findAnalysis(id).orElse(null);
         if (stored == null) {
@@ -559,12 +634,15 @@ public class Cli {
                   profile show              print the current project profile
                   profile set [options]     create or replace the project profile
                   discover                  find papers that matter for this project
-                  analyze <paper id>        extract a paper's structure and strategy
+                  analyze <paper>           extract a paper's structure and strategy
                   analyses                  list every analysed paper
-                  compare <paper id>        compare an analysed paper to your project
+                  compare <paper>           compare an analysed paper to your project
                   import <directory>        read your own project's current state
                   changes                   what changed in your project since last import
-                  repo <paper id>           does the paper's code exist and look reusable
+                  repo <paper>              does the paper's code exist and look reusable
+
+<paper> is either the arXiv id (2412.20374v2) or the row number from
+the last 'rc discover' listing (2).
                   landscape                 the space of solution approaches, and where
                                             your own approach sits in it
                   where                     print the file the project is stored in

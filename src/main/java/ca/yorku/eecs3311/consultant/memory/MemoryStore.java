@@ -76,6 +76,7 @@ public class MemoryStore {
         state.setProfile(memory.getProfile());
         state.setPapers(memory.getPaperAnalyses());
         state.setLastSnapshot(memory.getLastSnapshot());
+        state.setLastListing(memory.getLastListing());
         mapper.writeValue(getFile().toFile(), state);
     }
 
@@ -101,6 +102,7 @@ public class MemoryStore {
             for (var analysis : state.getPapers()) {
                 memory.addPaperAnalysis(analysis);
             }
+            memory.saveLastListing(state.getLastListing());
             if (state.getLastSnapshot() != null) {
                 // absent means no import has ever happened; clear() already
                 // left an empty snapshot in place, which is what F10 diffs against

@@ -31,6 +31,7 @@ public final class ProjectMemory {
     private ProjectProfile profile = new ProjectProfile();
     private final List<PaperAnalysis> papers = new ArrayList<>();
     private ContextSnapshot lastSnapshot = new ContextSnapshot();
+    private List<String> lastListing = new ArrayList<>();
 
     private ProjectMemory() {
     }
@@ -126,6 +127,33 @@ public final class ProjectMemory {
         return lastSnapshot;
     }
 
+    // --- the last discovery listing -----------------------------------------
+
+    /**
+     * Records the paper ids of the listing a client last showed, in the order
+     * it showed them.
+     *
+     * <p>This exists so the CLI can accept the row number a researcher just
+     * read off the screen. Every {@code rc} invocation is a separate JVM, so
+     * the position-to-id mapping has to outlive the process that printed it.
+     *
+     * @param ids the ids in display order; null or empty clears the listing,
+     *     because "there is no listing" is the correct state after a discovery
+     *     that found nothing
+     */
+    public synchronized void saveLastListing(List<String> ids) {
+        lastListing = ids == null ? new ArrayList<>() : new ArrayList<>(ids);
+    }
+
+    /**
+     * @return the ids of the last listing in display order, read-only. Empty
+     *     before any discovery, so a caller can tell a stale number from one
+     *     that never had a listing to refer to
+     */
+    public synchronized List<String> getLastListing() {
+        return Collections.unmodifiableList(new ArrayList<>(lastListing));
+    }
+
     // --- lifecycle ----------------------------------------------------------
 
     /**
@@ -139,5 +167,6 @@ public final class ProjectMemory {
         profile = new ProjectProfile();
         papers.clear();
         lastSnapshot = new ContextSnapshot();
+        lastListing = new ArrayList<>();
     }
 }

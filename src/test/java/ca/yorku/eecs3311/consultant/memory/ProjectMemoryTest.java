@@ -131,17 +131,59 @@ class ProjectMemoryTest {
                 "shared state must not be writable by accident");
     }
 
+    // --- the last discovery listing -----------------------------------------
+
+    @Test
+    void thereIsNoListingUntilADiscoveryRunRecordsOne() {
+        assertTrue(ProjectMemory.getInstance().getLastListing().isEmpty());
+    }
+
+    @Test
+    void theListingIsKeptInTheOrderItWasShownIn() {
+        ProjectMemory.getInstance().saveLastListing(
+                List.of("2304.09218v1", "2412.20374v2", "2311.09402v2"));
+
+        assertEquals(List.of("2304.09218v1", "2412.20374v2", "2311.09402v2"),
+                ProjectMemory.getInstance().getLastListing());
+    }
+
+    @Test
+    void aNewListingReplacesTheOldOneRatherThanAppending() {
+        ProjectMemory.getInstance().saveLastListing(List.of("a", "b", "c"));
+        ProjectMemory.getInstance().saveLastListing(List.of("x"));
+
+        assertEquals(List.of("x"), ProjectMemory.getInstance().getLastListing());
+    }
+
+    @Test
+    void aNullListingClearsItRatherThanThrowing() {
+        ProjectMemory.getInstance().saveLastListing(List.of("a"));
+        ProjectMemory.getInstance().saveLastListing(null);
+
+        assertTrue(ProjectMemory.getInstance().getLastListing().isEmpty());
+    }
+
+    @Test
+    void theListingCannotBeMutatedThroughTheGetter() {
+        ProjectMemory.getInstance().saveLastListing(List.of("a"));
+
+        assertThrows(UnsupportedOperationException.class,
+                () -> ProjectMemory.getInstance().getLastListing().add("b"));
+    }
+
     @Test
     void clearResetsEverySlot() {
         ProjectMemory m = ProjectMemory.getInstance();
         m.saveProfile(new ProjectProfile("q"));
         m.addPaperAnalysis(analysis("p1", "A Paper"));
         m.saveSnapshot(new ContextSnapshot("2026-11-02", "/p"));
+        m.saveLastListing(List.of("p1"));
 
         m.clear();
 
         assertFalse(m.getProfile().isComplete());
         assertTrue(m.getPaperAnalyses().isEmpty());
         assertTrue(m.getLastSnapshot().isEmpty());
+        assertTrue(m.getLastListing().isEmpty());
     }
 }

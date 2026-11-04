@@ -21,6 +21,13 @@ public class MemoryState {
     private List<PaperAnalysis> papers = new ArrayList<>();
 
     /**
+     * The ids of the listing a client last displayed, in display order, so a
+     * row number typed in a later process still means the same paper. Absent
+     * from files written before row numbers existed, which loads as empty.
+     */
+    private List<String> lastListing = new ArrayList<>();
+
+    /**
      * Null until a project directory has actually been imported, and omitted
      * from the file while it is. A snapshot written out as blank strings reads
      * as a scan that happened, which is a different claim from never having
@@ -40,6 +47,14 @@ public class MemoryState {
 
     public void setProfile(ProjectProfile profile) {
         this.profile = profile == null ? new ProjectProfile() : profile;
+    }
+
+    public List<String> getLastListing() {
+        return lastListing;
+    }
+
+    public void setLastListing(List<String> lastListing) {
+        this.lastListing = lastListing == null ? new ArrayList<>() : new ArrayList<>(lastListing);
     }
 
     public List<PaperAnalysis> getPapers() {
