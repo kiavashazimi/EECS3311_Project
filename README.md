@@ -117,6 +117,9 @@ each.
 
 # 6. the field as a whole
 ./rc landscape                    # solution approaches, and where yours sits
+
+# 7. what is new since last time
+./rc digest                       # new papers and project changes
 ```
 
 ### API key

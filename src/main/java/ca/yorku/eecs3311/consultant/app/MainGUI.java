@@ -6,6 +6,7 @@ import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
+import ca.yorku.eecs3311.consultant.domain.Digest;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
@@ -61,6 +62,7 @@ public class MainGUI {
     private final Button importProject = new Button("Import my project");
     private final Button whatChanged = new Button("What changed");
     private final Button strategies = new Button("Strategies");
+    private final Button digestButton = new Button("Digest");
     private final TreeView<StrategyNode> tree = new TreeView<>();
     private final TextField consultQuery = new TextField();
     private final Button askButton = new Button("Ask");
@@ -84,6 +86,7 @@ public class MainGUI {
         discover.setOnAction(e -> discoverPapers());
         askButton.setOnAction(e -> consult(false));
         priorButton.setOnAction(e -> consult(true));
+        digestButton.setOnAction(e -> showDigestNow());
 
         // nothing to analyse until a paper is picked out of the feed
         analyze.setDisable(true);
@@ -160,7 +163,8 @@ public class MainGUI {
 
         status.setWrapText(true);
         grid.add(new HBox(12, save, discover, analyze, compare, checkCode), 1, row++);
-        grid.add(new HBox(12, importProject, whatChanged, strategies, status), 1, row++);
+        grid.add(new HBox(12, importProject, whatChanged, strategies, digestButton, status),
+                1, row++);
 
         consultQuery.setPromptText(
                 "ask about your project, or describe an idea to look for prior work");
@@ -238,6 +242,73 @@ public class MainGUI {
         }, "discover-papers");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * F12 from the GUI. The digest itself is assembled from what the builder
+     * was already told, but the narrative is a model call, so it runs off the
+     * FX thread like the others.
+     */
+    private void showDigestNow() {
+        digestButton.setDisable(true);
+        detail.setText("Assembling the digest...");
+
+        Thread worker = new Thread(() -> {
+            try {
+                Digest d = controller.buildDigest();
+                Platform.runLater(() -> {
+                    showDigest(d);
+                    digestButton.setDisable(false);
+                });
+            } catch (StorageException e) {
+                Platform.runLater(() -> {
+                    detail.setText(e.getMessage());
+                    digestButton.setDisable(false);
+                });
+            } catch (RuntimeException e) {
+                Platform.runLater(() -> {
+                    detail.setText("The digest could not be built: " + e);
+                    digestButton.setDisable(false);
+                });
+            }
+        }, "digest");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /** The method SD08 names. Renders a digest, or says plainly that it is empty. */
+    void showDigest(Digest d) {
+        StringBuilder b = new StringBuilder("Digest - ").append(d.getGeneratedAt())
+                .append("\n\n");
+
+        if (d.isEmpty()) {
+            // UC11 3a: an explicit message, not a blank panel
+            String since = controller.getLastDigestAt();
+            b.append(since.isBlank()
+                    ? "Nothing new to report yet. Discover papers, or import your project."
+                    : "Nothing new since " + since + ".");
+            detail.setText(b.toString());
+            return;
+        }
+
+        b.append(d.isSummaryMissing()
+                ? "(no summary - the language model was unavailable)"
+                : d.getSummaryText());
+
+        if (!d.getNewPapers().isEmpty()) {
+            b.append("\n\nNew papers (").append(d.getNewPapers().size()).append(')');
+            for (var p : d.getNewPapers()) {
+                b.append("\n  ").append(p.getDate()).append("  ").append(p.getTitle());
+            }
+        }
+        if (!d.getStrategyHighlights().isEmpty()) {
+            b.append("\n\nApproaches seen: ")
+                    .append(String.join(", ", d.getStrategyHighlights()));
+        }
+        if (!d.getProjectChanges().isBlank()) {
+            b.append("\n\nYour project\n  ").append(d.getProjectChanges());
+        }
+        detail.setText(b.toString());
     }
 
     /**

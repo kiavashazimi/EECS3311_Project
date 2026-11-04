@@ -2,6 +2,7 @@ package ca.yorku.eecs3311.consultant.memory;
 
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -32,6 +33,8 @@ public final class ProjectMemory {
     private final List<PaperAnalysis> papers = new ArrayList<>();
     private ContextSnapshot lastSnapshot = new ContextSnapshot();
     private List<String> lastListing = new ArrayList<>();
+    private final List<PaperRecord> digestPending = new ArrayList<>();
+    private String lastDigestAt = "";
 
     private ProjectMemory() {
     }
@@ -154,6 +157,64 @@ public final class ProjectMemory {
         return Collections.unmodifiableList(new ArrayList<>(lastListing));
     }
 
+    // --- the digest's pending papers (F12) -----------------------------------
+
+    /**
+     * Records a paper the digest has not reported yet.
+     *
+     * <p>Lives here rather than inside {@code DigestBuilder} because every
+     * {@code rc} invocation is a separate JVM: the Observer receives the push
+     * during {@code rc discover}, and {@code rc digest} runs in a later
+     * process. Without this the digest would always have nothing to report
+     * from the command line.
+     *
+     * @param paper the newly discovered paper; null and duplicates are ignored
+     */
+    public synchronized void addDigestPaper(PaperRecord paper) {
+        if (paper == null) {
+            return;
+        }
+        for (PaperRecord seen : digestPending) {
+            if (seen.getId().equals(paper.getId())) {
+                return;
+            }
+        }
+        digestPending.add(paper);
+    }
+
+    /** @return the papers awaiting a digest, in the order they were found, read-only */
+    public synchronized List<PaperRecord> getDigestPending() {
+        return Collections.unmodifiableList(new ArrayList<>(digestPending));
+    }
+
+    public synchronized void setDigestPending(List<PaperRecord> papers) {
+        digestPending.clear();
+        if (papers != null) {
+            for (PaperRecord p : papers) {
+                addDigestPaper(p);
+            }
+        }
+    }
+
+    /** Called once a digest has actually reported them. */
+    public synchronized void clearDigestPending() {
+        digestPending.clear();
+    }
+
+    /**
+     * @return when a digest last had something to report, or blank if none ever
+     *     has. A digest that found nothing deliberately leaves this alone, so
+     *     that "nothing new since X" names the last time there <em>was</em>
+     *     something rather than the moment the question was asked
+     */
+    public synchronized String getLastDigestAt() {
+        return lastDigestAt;
+    }
+
+    public synchronized void setLastDigestAt(String when) {
+        this.lastDigestAt = when == null ? "" : when.strip();
+    }
+
     // --- lifecycle ----------------------------------------------------------
 
     /**
@@ -168,5 +229,7 @@ public final class ProjectMemory {
         papers.clear();
         lastSnapshot = new ContextSnapshot();
         lastListing = new ArrayList<>();
+        digestPending.clear();
+        lastDigestAt = "";
     }
 }

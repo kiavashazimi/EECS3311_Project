@@ -8,6 +8,7 @@ import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
 import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
+import ca.yorku.eecs3311.consultant.domain.Digest;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.RepoSummary;
 import ca.yorku.eecs3311.consultant.domain.StrategyNode;
@@ -91,6 +92,8 @@ public class Cli {
                 return ask(args);
             case "prior":
                 return prior(args);
+            case "digest":
+                return digest();
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -142,6 +145,58 @@ public class Cli {
                 out.println("      code: " + p.getRepoUrl());
             }
             out.println();
+        }
+        return OK;
+    }
+
+    // --- digest --------------------------------------------------------------
+
+    /** F12. Nothing is searched here; the builder was told as papers arrived. */
+    private int digest() {
+        Digest d;
+        try {
+            d = controller.buildDigest();
+        } catch (StorageException e) {
+            err.println(e.getMessage());
+            return STORAGE_ERROR;
+        }
+
+        out.println("Digest - " + d.getGeneratedAt());
+        out.println();
+
+        if (d.isEmpty()) {
+            // UC11 3a: said explicitly, never shown as an empty screen
+            String since = controller.getLastDigestAt();
+            out.println(since.isBlank()
+                    ? "Nothing new to report yet. Run 'rc discover' to find papers,"
+                            + " or 'rc import <dir>' to read your project."
+                    : "Nothing new since " + since + ".");
+            return OK;
+        }
+
+        if (d.isSummaryMissing()) {
+            out.println("(no summary - the language model was unavailable)");
+            out.println();
+        } else {
+            out.println(d.getSummaryText());
+            out.println();
+        }
+
+        if (!d.getNewPapers().isEmpty()) {
+            out.println("New papers (" + d.getNewPapers().size() + ")");
+            for (var p : d.getNewPapers()) {
+                out.println("  " + p.getDate() + "  " + p.getTitle());
+                out.println("      " + p.getUrl());
+            }
+            out.println();
+        }
+        if (!d.getStrategyHighlights().isEmpty()) {
+            out.println("Approaches seen: " + String.join(", ", d.getStrategyHighlights()));
+            out.println();
+        }
+        if (!d.getProjectChanges().isBlank()) {
+            out.println("Your project");
+            out.println("  " + d.getProjectChanges());
         }
         return OK;
     }
@@ -707,6 +762,7 @@ public class Cli {
                   repo <paper>              does the paper's code exist and look reusable
   ask "<question>"          answer a question from your stored project data
   prior "<idea>"            has anyone tried this? searches papers and memory
+  digest                    new papers and project changes since the last digest
 
 <paper> is either the arXiv id (2412.20374v2) or the row number from
 the last 'rc discover' listing (2).

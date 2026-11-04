@@ -11,6 +11,14 @@ public class Digest {
     private String generatedAt = "";
     private List<PaperRecord> newPapers = new ArrayList<>();
     private String projectChanges = "";
+
+    /**
+     * The strategy tags of the new papers that have been analysed.
+     *
+     * <p>Derived from stored analyses, never from the papers themselves: a tag
+     * for a paper nobody has analysed would be a guess presented as a finding.
+     */
+    private List<String> strategyHighlights = new ArrayList<>();
     private String summaryText = "";
 
     public Digest() {
@@ -59,6 +67,15 @@ public class Digest {
 
     public void setNewPapers(List<PaperRecord> newPapers) {
         this.newPapers = newPapers == null ? new ArrayList<>() : new ArrayList<>(newPapers);
+    }
+
+    public List<String> getStrategyHighlights() {
+        return Collections.unmodifiableList(strategyHighlights);
+    }
+
+    public void setStrategyHighlights(List<String> strategyHighlights) {
+        this.strategyHighlights = strategyHighlights == null
+                ? new ArrayList<>() : new ArrayList<>(strategyHighlights);
     }
 
     public String getProjectChanges() {

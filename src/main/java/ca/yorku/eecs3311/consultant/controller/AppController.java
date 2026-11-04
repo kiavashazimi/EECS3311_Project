@@ -1,6 +1,7 @@
 package ca.yorku.eecs3311.consultant.controller;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.DigestBuilder;
 import ca.yorku.eecs3311.consultant.agent.GroundedAnswerAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
@@ -14,6 +15,7 @@ import ca.yorku.eecs3311.consultant.context.FileBasedContextProvider;
 import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
+import ca.yorku.eecs3311.consultant.domain.Digest;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
@@ -54,6 +56,7 @@ public class AppController {
     private final ProjectContextAgent context;
     private final RepositoryAnalysisAgent repository;
     private final GroundedAnswerAgent answering;
+    private final DigestBuilder digestBuilder;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -76,6 +79,10 @@ public class AppController {
                 new ClaudeCodeContextProvider(), new FileBasedContextProvider()));
         this.repository = new RepositoryAnalysisAgent(tools);
         this.answering = new GroundedAnswerAgent(tools);
+        // registered here, not by a client: the digest has to be collecting
+        // during every discovery, whichever client started it
+        this.digestBuilder = new DigestBuilder(tools, memory);
+        this.discovery.addListener(digestBuilder);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -411,6 +418,46 @@ public class AppController {
      */
     public Answer ask(String question) throws AgentException {
         return answering.ask(question, memory.getProfile(), memory.getPaperAnalyses());
+    }
+
+    // --- F12: the digest (UC11, SD08) ---------------------------------------
+
+    /**
+     * Assembles the digest from what the builder has been told since the last
+     * one.
+     *
+     * <p>Nothing is queried here. {@code DigestBuilder} has been receiving each
+     * discovered paper through the Observer all along, which is the difference
+     * between being told and having to ask.
+     *
+     * @return the digest. {@code isEmpty()} means nothing new, which the caller
+     *     reports as "nothing new since {@link #getLastDigestAt()}" rather than
+     *     as a blank view
+     * @throws StorageException if the digest was assembled but the record of
+     *     having reported it could not be written. The digest itself is
+     *     returned to the caller by then, so the risk is a repeat next time,
+     *     not a loss
+     */
+    public Digest buildDigest() throws StorageException {
+        Digest digest = digestBuilder.buildDigest();
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            throw new StorageException(
+                    "the digest was assembled but could not be recorded in "
+                            + store.getFile(), e);
+        }
+        return digest;
+    }
+
+    /** @return when the last digest ran, blank if none ever has */
+    public String getLastDigestAt() {
+        return memory.getLastDigestAt();
+    }
+
+    /** @return how many discovered papers are waiting to be reported */
+    public int papersAwaitingDigest() {
+        return digestBuilder.pendingCount();
     }
 
     // --- F13: the solution landscape (UC12) ---------------------------------

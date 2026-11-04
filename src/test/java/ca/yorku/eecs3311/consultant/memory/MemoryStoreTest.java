@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -336,5 +337,40 @@ class MemoryStoreTest {
 
         assertFalse(store.load(memory), "precondition: the file is unusable");
         assertDoesNotThrow(() -> store.save(memory));
+    }
+
+    // --- the digest's pending papers ----------------------------------------
+
+    @Test
+    void papersAwaitingADigestSurviveAcrossProcesses() throws IOException {
+        // the Observer collects them during 'rc discover'; 'rc digest' is a
+        // different JVM, so without this the digest always has nothing to say
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        memory.addDigestPaper(new PaperRecord("2412.20374v2", "FairDiffusion", "arXiv", "2024"));
+        memory.setLastDigestAt("2026-11-03 20:00");
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+        memory.clear();
+        assertTrue(store.load(memory));
+
+        assertEquals(1, memory.getDigestPending().size());
+        assertEquals("FairDiffusion", memory.getDigestPending().get(0).getTitle());
+        assertEquals("2026-11-03 20:00", memory.getLastDigestAt());
+    }
+
+    @Test
+    void aFileWrittenBeforeDigestsExistedStillLoads() throws IOException {
+        Files.writeString(tempDir.resolve("project-memory.json"), """
+                {"profile":{"researchQuestion":"q"},"papers":[]}
+                """);
+        ProjectMemory memory = ProjectMemory.getInstance();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertTrue(store.load(memory));
+        assertTrue(memory.getDigestPending().isEmpty());
+        assertTrue(memory.getLastDigestAt().isBlank(),
+                "never ran is not the same as ran at the epoch");
     }
 }

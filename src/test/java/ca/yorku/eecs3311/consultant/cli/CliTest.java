@@ -966,4 +966,95 @@ class CliTest {
         assertTrue(stdout().contains("ask "), stdout());
         assertTrue(stdout().contains("prior "), stdout());
     }
+
+    // --- F12 digest ----------------------------------------------------------
+
+    @Test
+    void digestSaysNothingNewRatherThanPrintingAnEmptyReport() {
+        givenAProfile();
+
+        assertEquals(0, cli.run(new String[] {"digest"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("Digest"), printed);
+        assertTrue(printed.toLowerCase().contains("nothing new"),
+                "UC11 3a: said explicitly, not shown as a blank screen: " + printed);
+    }
+
+    @Test
+    void digestReportsThePapersDiscoveryPushedToIt() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"), paper("1", "Another"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"},{\"id\":\"1\",\"score\":40,\"why\":\"ok\"}]}");
+        cli.run(new String[] {"discover"});
+        out.reset();
+
+        llm.respondWith("Two papers worth a look this week.");
+        assertEquals(0, cli.run(new String[] {"digest"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("New papers (2)"), printed);
+        assertTrue(printed.contains("FairDiffusion"), printed);
+        assertTrue(printed.contains("Two papers worth a look"), printed);
+    }
+
+    @Test
+    void theSecondDigestDoesNotRepeatTheFirstOnesPapers() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"}]}");
+        cli.run(new String[] {"discover"});
+        llm.respondWith("a summary");
+        cli.run(new String[] {"digest"});
+        out.reset();
+
+        assertEquals(0, cli.run(new String[] {"digest"}));
+
+        assertTrue(stdout().toLowerCase().contains("nothing new since"),
+                "the papers were already reported: " + stdout());
+    }
+
+    @Test
+    void digestShowsTheAssembledReportWhenTheModelIsUnavailable() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"}]}");
+        cli.run(new String[] {"discover"});
+        out.reset();
+
+        llm.failWith("HTTP 529 overloaded");
+        assertEquals(0, cli.run(new String[] {"digest"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("FairDiffusion"),
+                "UC11 4a: the structured digest stands without the narrative: " + printed);
+        assertTrue(printed.toLowerCase().contains("no summary"), printed);
+    }
+
+    @Test
+    void digestListsTheApproachesOfPapersThatHaveBeenAnalysed() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"}]}");
+        cli.run(new String[] {"discover"});
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2412.20374v2"});
+        out.reset();
+
+        llm.respondWith("a summary");
+        cli.run(new String[] {"digest"});
+
+        assertTrue(stdout().contains("Approaches seen"), stdout());
+        assertTrue(stdout().contains("diffusion model"), stdout());
+    }
+
+    @Test
+    void helpListsTheDigestCommand() {
+        assertEquals(0, cli.run(new String[] {"help"}));
+        assertTrue(stdout().contains("digest"), stdout());
+    }
 }

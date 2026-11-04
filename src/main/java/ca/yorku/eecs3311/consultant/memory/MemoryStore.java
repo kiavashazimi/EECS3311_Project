@@ -97,6 +97,8 @@ public class MemoryStore {
         state.setPapers(memory.getPaperAnalyses());
         state.setLastSnapshot(memory.getLastSnapshot());
         state.setLastListing(memory.getLastListing());
+        state.setDigestPending(memory.getDigestPending());
+        state.setLastDigestAt(memory.getLastDigestAt());
         mapper.writeValue(getFile().toFile(), state);
         // this store wrote the file, so its memory is now the authority for it
         readAttempted = true;
@@ -128,6 +130,8 @@ public class MemoryStore {
                 memory.addPaperAnalysis(analysis);
             }
             memory.saveLastListing(state.getLastListing());
+            memory.setDigestPending(state.getDigestPending());
+            memory.setLastDigestAt(state.getLastDigestAt());
             if (state.getLastSnapshot() != null) {
                 // absent means no import has ever happened; clear() already
                 // left an empty snapshot in place, which is what F10 diffs against

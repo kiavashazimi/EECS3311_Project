@@ -2,6 +2,7 @@ package ca.yorku.eecs3311.consultant.memory;
 
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import java.util.ArrayList;
@@ -26,6 +27,15 @@ public class MemoryState {
      * from files written before row numbers existed, which loads as empty.
      */
     private List<String> lastListing = new ArrayList<>();
+
+    /**
+     * Papers discovered but not yet reported in a digest, and when the last
+     * digest ran. Persisted because the Observer that collects them runs in a
+     * different process from the one that prints the digest.
+     */
+    private List<PaperRecord> digestPending = new ArrayList<>();
+
+    private String lastDigestAt = "";
 
     /**
      * Null until a project directory has actually been imported, and omitted
@@ -55,6 +65,23 @@ public class MemoryState {
 
     public void setLastListing(List<String> lastListing) {
         this.lastListing = lastListing == null ? new ArrayList<>() : new ArrayList<>(lastListing);
+    }
+
+    public List<PaperRecord> getDigestPending() {
+        return digestPending;
+    }
+
+    public void setDigestPending(List<PaperRecord> digestPending) {
+        this.digestPending = digestPending == null
+                ? new ArrayList<>() : new ArrayList<>(digestPending);
+    }
+
+    public String getLastDigestAt() {
+        return lastDigestAt;
+    }
+
+    public void setLastDigestAt(String lastDigestAt) {
+        this.lastDigestAt = lastDigestAt == null ? "" : lastDigestAt;
     }
 
     public List<PaperAnalysis> getPapers() {
