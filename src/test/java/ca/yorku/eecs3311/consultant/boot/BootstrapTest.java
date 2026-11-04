@@ -2,6 +2,7 @@ package ca.yorku.eecs3311.consultant.boot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.config.Config;
@@ -97,5 +98,36 @@ class BootstrapTest {
 
         assertTrue(Files.readString(tempDir.resolve("project-memory.json"))
                 .contains("A Stored Paper"), "the stored work must survive a profile save");
+    }
+
+    // --- which literature Strategy gets chosen -------------------------------
+
+    @Test
+    void withNoSemanticScholarKeyArxivIsUsedAloneWithNoFallback() {
+        Bootstrap.application(configPointingAtTempDir());
+
+        // leading with the anonymous S2 endpoint would buy a guaranteed 429
+        // round trip before every search
+        assertEquals("arXiv", Bootstrap.literatureSourceName(configPointingAtTempDir()));
+        assertNull(Bootstrap.fallbackSourceName(configPointingAtTempDir()));
+    }
+
+    @Test
+    void withASemanticScholarKeyItLeadsAndArxivCatchesIt() {
+        Config config = Config.load(tempDir.resolve("no-such.env"),
+                Map.of("RC_DATA_DIR", tempDir.toString(), "S2_API_KEY", "a-real-looking-key"));
+
+        assertEquals("Semantic Scholar", Bootstrap.literatureSourceName(config));
+        assertEquals("arXiv", Bootstrap.fallbackSourceName(config),
+                "S2 rate limits hard enough that 429 is its ordinary failure");
+    }
+
+    @Test
+    void theExamplePlaceholderDoesNotCountAsAConfiguredKey() {
+        Config config = Config.load(tempDir.resolve("no-such.env"),
+                Map.of("RC_DATA_DIR", tempDir.toString(), "S2_API_KEY", "YOUR_S2_KEY_HERE"));
+
+        assertEquals("arXiv", Bootstrap.literatureSourceName(config),
+                "copying .env.example without editing it must not look configured");
     }
 }

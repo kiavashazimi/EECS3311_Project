@@ -229,7 +229,7 @@ public class MainGUI {
             try {
                 List<RankedPaper> papers = controller.discoverPapers();
                 Platform.runLater(() -> {
-                    feed.showRanked(papers);
+                    feed.showRanked(papers, controller.getRankingFailure());
                     discover.setDisable(false);
                 });
             } catch (AgentException e) {

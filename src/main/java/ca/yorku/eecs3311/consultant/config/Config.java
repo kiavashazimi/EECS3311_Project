@@ -126,6 +126,25 @@ public final class Config {
         return get("LLM_API_KEY", "");
     }
 
+    /**
+     * @return true when a Semantic Scholar key is configured. The placeholder
+     *     from {@code .env.example} counts as absent, so copying the example
+     *     without editing it does not look like a configured key
+     */
+    public boolean hasSemanticScholarKey() {
+        String key = get("S2_API_KEY", "");
+        return !key.isBlank() && !PLACEHOLDER.equals(key) && !"YOUR_S2_KEY_HERE".equals(key);
+    }
+
+    /**
+     * @return the Semantic Scholar key, or blank when none is set. Blank is
+     *     usable — the endpoint works anonymously, just rate limited hard —
+     *     so unlike the LLM key this does not throw
+     */
+    public String semanticScholarKey() {
+        return get("S2_API_KEY", "");
+    }
+
     public String llmModel() {
         return get("LLM_MODEL", DEFAULT_MODEL);
     }

@@ -136,6 +136,25 @@ Without a key, those features still return their deterministic result and label 
 narrative rather than inventing one. `.env` is gitignored, and `Config.toString()` prints
 `llmApiKey=set` rather than the key.
 
+### Literature sources
+
+Paper search uses **arXiv** by default. Setting `S2_API_KEY` in `.env` switches the primary
+source to **Semantic Scholar**, with arXiv as the automatic fallback when it cannot be
+reached — its keyed rate limit is one request per second, so a rejection is an ordinary
+event rather than an exceptional one, and the switch is written to the tool call log so
+results are never mistaken for the other source's.
+
+Semantic Scholar is worth the second source for its index rather than its query handling:
+on one measured query, 4 of 10 results were not on arXiv at all (AMIA, PLOS Digital Health,
+conference proceedings), and it reports the **published venue** — *Nature Medicine* for a
+paper arXiv's own API describes only as `arXiv cs.CV`. Both sources need short, term-reduced
+queries; neither handles a whole research question.
+
+> This project uses the **Semantic Scholar** API, provided by the Allen Institute for AI.
+> Work reporting results obtained through it should cite *The Semantic Scholar Open Data
+> Platform*. Get a free key at
+> <https://www.semanticscholar.org/product/api#api-key-form>.
+
 ### Exit codes
 
 `0` success · `1` usage error · `2` validation failed, nothing saved · `3` could not write ·

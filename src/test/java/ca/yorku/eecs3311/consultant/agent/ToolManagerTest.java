@@ -4,8 +4,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.literature.FakeLiteratureSource;
+import ca.yorku.eecs3311.consultant.literature.LiteratureUnavailableException;
+import ca.yorku.eecs3311.consultant.literature.SearchIntent;
 import ca.yorku.eecs3311.consultant.llm.FakeLLMClient;
 import ca.yorku.eecs3311.consultant.llm.LLMUnavailableException;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /** The single doorway agents use to reach tools. */
@@ -73,5 +78,81 @@ class ToolManagerTest {
     void rejectsABlankPrompt() {
         ToolManager tools = new ToolManager(new FakeLLMClient());
         assertThrows(IllegalArgumentException.class, () -> tools.callLLM("  "));
+    }
+
+    // --- the runtime fallback between two Strategies --------------------------
+
+    @Test
+    void aFailedPrimarySearchFallsBackToTheSecondSource() throws Exception {
+        FakeLiteratureSource primary = new FakeLiteratureSource("Semantic Scholar")
+                .failWith("HTTP 429 rate limited");
+        FakeLiteratureSource fallback = new FakeLiteratureSource("arXiv")
+                .returning(new PaperRecord("1", "A Paper", "arXiv", "2026-01-01"));
+        ToolManager tools = new ToolManager(new FakeLLMClient());
+        tools.setLiteratureSource(primary);
+        tools.setFallbackLiteratureSource(fallback);
+
+        List<PaperRecord> found = tools.search("fairness", SearchIntent.MOST_RELEVANT);
+
+        assertEquals(1, found.size(), "the search must still succeed");
+    }
+
+    @Test
+    void theFallbackIsRecordedSoResultsAreNotMistakenForTheOtherSource() throws Exception {
+        FakeLiteratureSource primary = new FakeLiteratureSource("Semantic Scholar")
+                .failWith("HTTP 429");
+        FakeLiteratureSource fallback = new FakeLiteratureSource("arXiv")
+                .returning(new PaperRecord("1", "A Paper", "arXiv", "2026-01-01"));
+        ToolManager tools = new ToolManager(new FakeLLMClient());
+        tools.setLiteratureSource(primary);
+        tools.setFallbackLiteratureSource(fallback);
+
+        tools.search("fairness", SearchIntent.MOST_RELEVANT);
+
+        assertTrue(tools.getCallLog().stream().anyMatch(l -> l.contains("falling back to arXiv")),
+                "the two sources have different coverage and ranking: " + tools.getCallLog());
+    }
+
+    @Test
+    void withNoFallbackConfiguredTheFailureStillReachesTheCaller() {
+        FakeLiteratureSource primary = new FakeLiteratureSource("Semantic Scholar")
+                .failWith("HTTP 429");
+        ToolManager tools = new ToolManager(new FakeLLMClient());
+        tools.setLiteratureSource(primary);
+
+        assertThrows(LiteratureUnavailableException.class,
+                () -> tools.search("fairness", SearchIntent.MOST_RELEVANT));
+    }
+
+    @Test
+    void whenBothSourcesFailBothReasonsAreReported() {
+        ToolManager tools = new ToolManager(new FakeLLMClient());
+        tools.setLiteratureSource(new FakeLiteratureSource("Semantic Scholar")
+                .failWith("HTTP 429"));
+        tools.setFallbackLiteratureSource(new FakeLiteratureSource("arXiv")
+                .failWith("connect timed out"));
+
+        LiteratureUnavailableException thrown = assertThrows(
+                LiteratureUnavailableException.class,
+                () -> tools.search("fairness", SearchIntent.MOST_RELEVANT));
+
+        assertTrue(thrown.getMessage().contains("429"),
+                "the first reason must not be lost: " + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains("connect timed out"), thrown.getMessage());
+    }
+
+    @Test
+    void theFallbackIsNotUsedWhenThePrimarySourceSimplyFoundNothing() throws Exception {
+        // no results is an answer, not a failure; retrying elsewhere would turn
+        // "there is nothing" into two searches the researcher did not ask for
+        FakeLiteratureSource primary = new FakeLiteratureSource("Semantic Scholar")
+                .returning();
+        FakeLiteratureSource fallback = new FakeLiteratureSource("arXiv")
+                .returning(new PaperRecord("1", "A Paper", "arXiv", "2026-01-01"));
+        ToolManager tools = new ToolManager(new FakeLLMClient());
+        tools.setLiteratureSource(primary);
+        tools.setFallbackLiteratureSource(fallback);
+
+        assertTrue(tools.search("fairness", SearchIntent.MOST_RELEVANT).isEmpty());
     }
 }

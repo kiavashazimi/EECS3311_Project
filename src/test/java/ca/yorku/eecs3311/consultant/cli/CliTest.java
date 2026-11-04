@@ -1057,4 +1057,34 @@ class CliTest {
         assertEquals(0, cli.run(new String[] {"help"}));
         assertTrue(stdout().contains("digest"), stdout());
     }
+
+    // --- telling two ranking failures apart ----------------------------------
+
+    @Test
+    void anUnreachableModelIsReportedAsUnavailable() {
+        givenAProfile();
+        source.returning(paper("1", "A paper"));
+        llm.failWith("HTTP 529 overloaded");
+
+        assertEquals(0, cli.run(new String[] {"discover"}));
+
+        assertTrue(stdout().contains("the language model was unavailable"), stdout());
+    }
+
+    @Test
+    void anUnreadableRankingIsNotReportedAsAnOutage() {
+        // a reply truncated at the output-token limit parses as nothing. Saying
+        // "unavailable" sent the reader looking for a service problem that was
+        // not there - this is what a 2048-token cap actually did.
+        givenAProfile();
+        source.returning(paper("1", "A paper"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"1\",\"score\":90,\"why\":\"cut off mid-str");
+
+        assertEquals(0, cli.run(new String[] {"discover"}));
+
+        String printed = stdout();
+        assertTrue(printed.contains("could not be read"), printed);
+        assertFalse(printed.contains("unavailable"),
+                "the model answered; its answer was unusable: " + printed);
+    }
 }

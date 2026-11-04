@@ -32,6 +32,7 @@ public class ToolManager {
 
     /** The current strategy. Settable, not final: swappable at runtime. */
     private LiteratureSource literatureSource;
+    private LiteratureSource fallbackLiteratureSource;
 
     /** Composed, not injected: the Stage 1 diagram owns these by composition. */
     private final PaperParser parser = new PaperParser();
@@ -129,8 +130,61 @@ public class ToolManager {
         } catch (LiteratureUnavailableException e) {
             callLog.add(tool + " (" + intent + "): " + summarise(query)
                     + " -> failed (" + e.getMessage() + ")");
-            throw e;
+            if (fallbackLiteratureSource == null) {
+                throw e;
+            }
+            return searchFallback(query, intent, e);
         }
+    }
+
+    /**
+     * Searches the second source after the first could not be reached.
+     *
+     * <p>This is the Strategy making a real runtime decision rather than a
+     * configuration-time one. Semantic Scholar ranks a whole question but rate
+     * limits hard — HTTP 429 is its ordinary failure, not an exceptional one —
+     * while arXiv is always available and only does ANDed keywords. Neither is
+     * simply better, so the choice has to be made when the call fails.
+     *
+     * <p>The switch is recorded in the call log. A fallback the researcher
+     * cannot see would make results from a different source, with different
+     * coverage and a different ranking, look like results from the one they
+     * configured.
+     *
+     * @param cause why the primary source failed, kept so that a failure of
+     *     both reports the first reason and not only the second
+     */
+    private List<PaperRecord> searchFallback(String query, SearchIntent intent,
+            LiteratureUnavailableException cause) throws LiteratureUnavailableException {
+        String tool = fallbackLiteratureSource.name();
+        callLog.add("falling back to " + tool + ": " + literatureSource.name()
+                + " was unavailable");
+        try {
+            List<PaperRecord> found = fallbackLiteratureSource.search(query, intent);
+            callLog.add(tool + " (" + intent + "): " + summarise(query)
+                    + " -> " + found.size() + " papers");
+            return found;
+        } catch (LiteratureUnavailableException e) {
+            callLog.add(tool + " (" + intent + "): " + summarise(query)
+                    + " -> failed (" + e.getMessage() + ")");
+            throw new LiteratureUnavailableException(
+                    "both sources failed - " + literatureSource.name() + ": "
+                            + cause.getMessage() + "; " + tool + ": " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Sets the source to use when the primary one cannot be reached.
+     *
+     * @param source the second source, or null to disable falling back
+     */
+    public void setFallbackLiteratureSource(LiteratureSource source) {
+        this.fallbackLiteratureSource = source;
+    }
+
+    /** @return the fallback source, or null when there is none */
+    public LiteratureSource getFallbackLiteratureSource() {
+        return fallbackLiteratureSource;
     }
 
     /**

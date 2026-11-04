@@ -188,6 +188,15 @@ public class AppController {
         discovery.addListener(listener);
     }
 
+    /**
+     * @return why the last discovery could not rank its results, blank when it
+     *     ranked them. "Unavailable" and "unreadable" are different problems
+     *     and the clients say which
+     */
+    public String getRankingFailure() {
+        return discovery.getRankingFailure();
+    }
+
     /** @return what the discovery agent decided to do on its last run, or null */
     public ca.yorku.eecs3311.consultant.agent.Plan getLastDiscoveryPlan() {
         return discovery.getLastPlan();

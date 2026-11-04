@@ -20,7 +20,18 @@ import java.util.stream.Collectors;
 public final class ClaudeClient implements LLMClient {
 
     /** Enough for an analysis or a comparison narrative without truncating. */
-    static final long DEFAULT_MAX_TOKENS = 2048L;
+    /**
+     * The output budget for one call.
+     *
+     * <p>Measured, not guessed. Ranking 25 papers needs about 2,900 output
+     * tokens — one JSON entry per paper, each with an id and a one-line reason.
+     * At the previous 2,048 the reply was cut off mid-string, the JSON failed
+     * to parse, and discovery reported every paper as unranked. It only
+     * surfaced once Semantic Scholar was added, because its non-arXiv ids are
+     * 40-character hashes rather than short arXiv ids, but 2,048 had never been
+     * enough for a full ranking.
+     */
+    static final long DEFAULT_MAX_TOKENS = 4096L;
 
     private static final Duration TIMEOUT = Duration.ofSeconds(60);
     private static final int MAX_RETRIES = 2;

@@ -275,6 +275,22 @@ public class PaperDiscoveryAgent extends Agent {
      * the ordering is better calibrated, because the model sees the
      * alternatives it is ranking against.
      */
+    /**
+     * Why the last run could not rank, or blank when it did.
+     *
+     * <p>Two different failures used to print one message. A model that cannot
+     * be reached is a service problem the researcher can retry; a reply that
+     * cannot be read is a problem with the request, and saying "unavailable"
+     * sends them looking in the wrong place. A truncated ranking reply was
+     * reported as an outage for exactly that reason.
+     */
+    private String rankingFailure = "";
+
+    /** @return why the last run returned unranked papers, blank if it ranked them */
+    public String getRankingFailure() {
+        return rankingFailure;
+    }
+
     private List<RankedPaper> rank(List<PaperRecord> found) {
         List<PaperRecord> candidates =
                 found.size() > MAX_RANKED ? found.subList(0, MAX_RANKED) : found;
@@ -284,13 +300,18 @@ public class PaperDiscoveryAgent extends Agent {
             reply = tools.callLLM(rankingPrompt(candidates));
         } catch (LLMUnavailableException e) {
             // UC03 6a: show them unranked and labelled, never fabricated
+            rankingFailure = "the language model was unavailable";
             return unranked(found);
         }
 
         List<RankedPaper> ranked = parseRanking(reply, candidates);
         if (ranked.isEmpty()) {
+            // a different thing from being unavailable, and it was reported as
+            // the same one until a truncated reply made the difference matter
+            rankingFailure = "the model's ranking could not be read";
             return unranked(found);
         }
+        rankingFailure = "";
 
         // anything the model dropped is appended rather than lost
         for (PaperRecord paper : found) {

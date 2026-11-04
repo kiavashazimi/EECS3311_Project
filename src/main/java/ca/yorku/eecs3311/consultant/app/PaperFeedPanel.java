@@ -85,11 +85,21 @@ public class PaperFeedPanel implements PaperFeedListener {
 
     /** Replaces the feed with the ranked list, which carries the reasons. */
     public void showRanked(List<RankedPaper> papers) {
+        showRanked(papers, "");
+    }
+
+    /**
+     * @param whyUnranked why ranking did not happen, blank when it did. An
+     *     unreachable model and an unreadable reply are different problems
+     */
+    public void showRanked(List<RankedPaper> papers, String whyUnranked) {
         boolean unranked = !papers.isEmpty() && papers.stream().allMatch(RankedPaper::isUnranked);
+        String reason = whyUnranked == null || whyUnranked.isBlank()
+                ? "the ranking did not run" : whyUnranked;
         heading.setText(papers.isEmpty()
                 ? "Papers"
                 : papers.size() + " papers" + (unranked
-                        ? " - NOT RANKED, the language model was unavailable"
+                        ? " - NOT RANKED, " + reason
                         : ", most useful first"));
 
         rows.clear();

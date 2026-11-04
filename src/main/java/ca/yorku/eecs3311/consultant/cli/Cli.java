@@ -124,8 +124,9 @@ public class Cli {
 
         boolean unranked = papers.stream().allMatch(RankedPaper::isUnranked);
         if (unranked) {
-            out.println("Found " + papers.size()
-                    + " papers. NOT RANKED - the language model was unavailable.");
+            String why = controller.getRankingFailure();
+            out.println("Found " + papers.size() + " papers. NOT RANKED - "
+                    + (why.isBlank() ? "the ranking did not run" : why) + ".");
         } else {
             out.println("Found " + papers.size() + " papers, most useful first.");
         }
