@@ -1,7 +1,9 @@
 package ca.yorku.eecs3311.consultant.memory;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
@@ -250,5 +252,89 @@ class MemoryStoreTest {
 
         assertTrue(store.load(memory), "an older file must not be treated as corrupt");
         assertTrue(memory.getLastListing().isEmpty());
+    }
+
+    // --- the guard against writing over state nobody read --------------------
+
+    private static final String A_FILE_WITH_WORK_IN_IT = """
+            {"profile":{"researchQuestion":"a real question"},
+             "papers":[{"paper":{"id":"2304.09218v1","title":"A Paper"}}]}
+            """;
+
+    @Test
+    void writingOverAFileThatWasNeverReadIsRefused() {
+        // this is the GUI bug: App.start built the graph without calling
+        // loadStoredProject(), so the first save wrote an empty memory over
+        // every stored analysis, silently
+        assertDoesNotThrow(() -> Files.writeString(
+                tempDir.resolve("project-memory.json"), A_FILE_WITH_WORK_IN_IT));
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertThrows(IllegalStateException.class, () -> store.save(memory),
+                "an unread file must not be overwritten");
+    }
+
+    @Test
+    void theRefusedWriteLeavesTheFileExactlyAsItWas() throws IOException {
+        Path file = tempDir.resolve("project-memory.json");
+        Files.writeString(file, A_FILE_WITH_WORK_IN_IT);
+        String before = Files.readString(file);
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertThrows(IllegalStateException.class, () -> store.save(memory));
+
+        assertEquals(before, Files.readString(file),
+                "refusing must not be a partial write");
+    }
+
+    @Test
+    void writingIsAllowedOnceTheFileHasBeenRead() throws IOException {
+        Files.writeString(tempDir.resolve("project-memory.json"), A_FILE_WITH_WORK_IN_IT);
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertTrue(store.load(memory));
+        assertDoesNotThrow(() -> store.save(memory));
+    }
+
+    @Test
+    void theFirstSaveOfAFreshProjectIsAllowed() {
+        // nothing on disk means nothing to lose
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertFalse(store.exists());
+        assertDoesNotThrow(() -> store.save(memory));
+    }
+
+    @Test
+    void aSecondSaveThroughTheSameStoreIsAllowed() throws IOException {
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+
+        // the file now exists, but this store wrote it, so its memory is the
+        // authority for it
+        assertDoesNotThrow(() -> store.save(memory));
+    }
+
+    @Test
+    void aCorruptFileCanStillBeSavedOverOnceItHasBeenRead() throws IOException {
+        // refusing here would leave the researcher unable to save anything at
+        // all; the file was read and judged unusable, which is a decision
+        Files.writeString(tempDir.resolve("project-memory.json"), "{ this is not json");
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+
+        assertFalse(store.load(memory), "precondition: the file is unusable");
+        assertDoesNotThrow(() -> store.save(memory));
     }
 }

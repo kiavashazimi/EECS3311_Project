@@ -24,6 +24,15 @@ public class MemoryStore {
     private final ObjectMapper mapper;
 
     /**
+     * Whether this store has looked at its file yet.
+     *
+     * <p>Guards the one destructive operation in the application. A save writes
+     * the whole memory, so a client that never loaded would replace a file full
+     * of analyses with an empty one, and nothing in the old code said so.
+     */
+    private boolean readAttempted;
+
+    /**
      * @param directory where the memory file lives, created on first save
      */
     public MemoryStore(Path directory) {
@@ -71,6 +80,17 @@ public class MemoryStore {
      * @throws IOException if the file cannot be written
      */
     public void save(ProjectMemory memory) throws IOException {
+        if (!readAttempted && exists()) {
+            // A save writes the whole memory, so saving a memory that has never
+            // read this file replaces everything in it with nothing. That is
+            // not a storage failure the caller can recover from or report to
+            // the researcher - it is a miswired client, and the only safe
+            // moment to catch it is before the write.
+            throw new IllegalStateException(
+                    "refusing to overwrite " + getFile() + ": this memory has never read it."
+                    + " Load the stored project before saving"
+                    + " (see Bootstrap.application).");
+        }
         Files.createDirectories(directory);
         MemoryState state = new MemoryState();
         state.setProfile(memory.getProfile());
@@ -78,6 +98,8 @@ public class MemoryStore {
         state.setLastSnapshot(memory.getLastSnapshot());
         state.setLastListing(memory.getLastListing());
         mapper.writeValue(getFile().toFile(), state);
+        // this store wrote the file, so its memory is now the authority for it
+        readAttempted = true;
     }
 
     /**
@@ -92,6 +114,9 @@ public class MemoryStore {
      * @return true when state was loaded, false when there was nothing usable
      */
     public boolean load(ProjectMemory memory) {
+        // set before the early return: a missing file has still been looked
+        // for, and a first run must be able to save
+        readAttempted = true;
         if (!exists()) {
             return false;
         }

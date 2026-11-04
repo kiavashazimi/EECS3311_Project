@@ -2,8 +2,7 @@ package ca.yorku.eecs3311.consultant.cli;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
-import ca.yorku.eecs3311.consultant.agent.ToolManager;
-import ca.yorku.eecs3311.consultant.config.Config;
+import ca.yorku.eecs3311.consultant.boot.Bootstrap;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
@@ -13,10 +12,6 @@ import ca.yorku.eecs3311.consultant.domain.RepoSummary;
 import ca.yorku.eecs3311.consultant.domain.StrategyNode;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.domain.RankedPaper;
-import ca.yorku.eecs3311.consultant.literature.ArxivSource;
-import ca.yorku.eecs3311.consultant.llm.ClaudeClient;
-import ca.yorku.eecs3311.consultant.memory.MemoryStore;
-import ca.yorku.eecs3311.consultant.memory.ProjectMemory;
 import java.io.PrintStream;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -55,20 +50,8 @@ public class Cli {
     }
 
     public static void main(String[] args) {
-        Config config = Config.load();
-        AppController controller = new AppController(
-                ProjectMemory.getInstance(),
-                toolManager(config),
-                new MemoryStore(config.dataDir()));
-        controller.loadStoredProject();
-
+        AppController controller = Bootstrap.application();
         System.exit(new Cli(controller, System.out, System.err).run(args));
-    }
-
-    private static ToolManager toolManager(Config config) {
-        ToolManager tools = new ToolManager(new ClaudeClient(config));
-        tools.setLiteratureSource(new ArxivSource());
-        return tools;
     }
 
     /**
