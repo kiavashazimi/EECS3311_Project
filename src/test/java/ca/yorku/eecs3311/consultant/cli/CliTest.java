@@ -861,4 +861,109 @@ class CliTest {
         assertFalse(stderr().contains("not been analysed"),
                 "row 2 should resolve before the analysed check runs: " + stderr());
     }
+
+    // --- F11 ask / F08 prior work -------------------------------------------
+
+    /** Gives the CLI one analysed paper to retrieve against. */
+    private void givenAnAnalysedPaper() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion on CheXpert"));
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2412.20374v2"});
+        out.reset();
+        err.reset();
+    }
+
+    @Test
+    void askAnswersFromStoredRecordsAndListsThem() {
+        givenAnAnalysedPaper();
+        llm.respondWith("FairDiffusion uses a diffusion model on MIMIC-CXR.");
+
+        assertEquals(0, cli.run(new String[] {"ask", "what does FairDiffusion do?"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("FairDiffusion uses a diffusion model"), printed);
+        assertTrue(printed.contains("Based on:"), printed);
+        assertTrue(printed.contains("2412.20374v2"),
+                "every answer must be traceable: " + printed);
+    }
+
+    @Test
+    void askSaysNothingIsStoredRatherThanAnsweringAnyway() {
+        givenAProfile();
+        llm.respondWith("Quadrupeds are usually tuned with a central pattern generator.");
+
+        assertEquals(0, cli.run(new String[] {"ask", "how do quadruped gait controllers work?"}));
+
+        String printed = stdout().toLowerCase();
+        assertTrue(printed.contains("nothing relevant"), stdout());
+        assertFalse(printed.contains("central pattern generator"),
+                "the model's own knowledge must not reach the researcher: " + stdout());
+    }
+
+    @Test
+    void anUnquotedQuestionIsJoinedRatherThanTruncatedToItsFirstWord() {
+        givenAnAnalysedPaper();
+        llm.respondWith("an answer");
+
+        assertEquals(0, cli.run(new String[] {
+            "ask", "what", "does", "FairDiffusion", "do", "on", "CheXpert?"}), stderr());
+
+        assertTrue(llm.promptsSeen().get(0).contains("FairDiffusion"),
+                "the whole question must reach the agent: " + llm.promptsSeen().get(0));
+    }
+
+    @Test
+    void askNeedsAQuestion() {
+        assertNotEquals(0, cli.run(new String[] {"ask"}));
+        assertTrue(stderr().contains("question"), stderr());
+    }
+
+    @Test
+    void priorWorkReportsFindingNothingWithoutClaimingNobodyTriedIt() {
+        givenAProfile();
+        source.returning();
+
+        assertEquals(0, cli.run(new String[] {"prior", "quantum annealing for radiographs"}));
+
+        String printed = stdout().toLowerCase();
+        assertTrue(printed.contains("no matching evidence"), stdout());
+        assertFalse(printed.contains("no one has"), stdout());
+    }
+
+    @Test
+    void priorWorkCitesBothAStoredPaperAndALiveOne() {
+        givenAnAnalysedPaper();
+        PaperRecord live = paper("2508.16783v1",
+                "Conditioning Synthetic CheXpert Radiographs");
+        live.setSummary("FairDiffusion style conditioning of synthetic CheXpert radiographs");
+        source.returning(live);
+        llm.respondWith("Two lines of work are close.");
+
+        assertEquals(0, cli.run(new String[] {
+            "prior", "FairDiffusion style conditioning on CheXpert radiographs"}), stderr());
+
+        String printed = stdout();
+        assertTrue(printed.contains("2508.16783v1"), "the live result: " + printed);
+        assertTrue(printed.contains("2412.20374v2"), "the remembered result: " + printed);
+    }
+
+    @Test
+    void priorWorkCarriesAConfidenceNoteRatherThanAVerdict() {
+        givenAnAnalysedPaper();
+        source.returning(paper("2508.16783v1", "Controllable Synthetic Radiographs"));
+        llm.respondWith("Yes, definitely done already.");
+
+        cli.run(new String[] {"prior", "FairDiffusion conditioning on CheXpert radiographs"});
+
+        assertTrue(stdout().contains("not proof"),
+                "the note qualifies the result: " + stdout());
+    }
+
+    @Test
+    void helpListsBothNewCommands() {
+        assertEquals(0, cli.run(new String[] {"help"}));
+        assertTrue(stdout().contains("ask "), stdout());
+        assertTrue(stdout().contains("prior "), stdout());
+    }
 }

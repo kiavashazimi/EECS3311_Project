@@ -1,6 +1,7 @@
 package ca.yorku.eecs3311.consultant.controller;
 
 import ca.yorku.eecs3311.consultant.agent.AgentException;
+import ca.yorku.eecs3311.consultant.agent.GroundedAnswerAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperAnalysisAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperDiscoveryAgent;
 import ca.yorku.eecs3311.consultant.agent.PaperFeedListener;
@@ -10,6 +11,7 @@ import ca.yorku.eecs3311.consultant.agent.ResearchConsultantAgent;
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
 import ca.yorku.eecs3311.consultant.context.ClaudeCodeContextProvider;
 import ca.yorku.eecs3311.consultant.context.FileBasedContextProvider;
+import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.ContextSnapshot;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
@@ -51,6 +53,7 @@ public class AppController {
     private final ResearchConsultantAgent consultant;
     private final ProjectContextAgent context;
     private final RepositoryAnalysisAgent repository;
+    private final GroundedAnswerAgent answering;
 
     public AppController(ProjectMemory memory, ToolManager tools, MemoryStore store) {
         if (memory == null) {
@@ -72,6 +75,7 @@ public class AppController {
         this.context = new ProjectContextAgent(tools, List.of(
                 new ClaudeCodeContextProvider(), new FileBasedContextProvider()));
         this.repository = new RepositoryAnalysisAgent(tools);
+        this.answering = new GroundedAnswerAgent(tools);
     }
 
     // --- F01: set up the project profile (UC01, SD01) -----------------------
@@ -369,6 +373,44 @@ public class AppController {
     /** @return the last imported snapshot; empty rather than null before the first */
     public ContextSnapshot getLastSnapshot() {
         return memory.getLastSnapshot();
+    }
+
+    // --- F08: has anyone tried this (UC07, SD06) ----------------------------
+
+    /**
+     * Looks for prior evidence of an idea, in the live literature and in the
+     * papers this project has already analysed.
+     *
+     * <p>Both sources matter: the closest prior work is often a paper the
+     * researcher read months ago and forgot, which a literature search alone
+     * would return as if it were new.
+     *
+     * @param idea the idea, in the researcher's own words
+     * @return the closest evidence with its sources and a confidence note.
+     *     {@code isGrounded()} false means these searches found nothing — never
+     *     that the idea is unexplored, which two searches cannot establish
+     * @throws AgentException if the idea is unusable
+     */
+    public Answer searchPriorWork(String idea) throws AgentException {
+        return answering.searchPriorWork(idea, memory.getProfile(), memory.getPaperAnalyses());
+    }
+
+    // --- F11: ask a project-aware question (UC10, SD06) ---------------------
+
+    /**
+     * Answers a free-form question from stored project data only.
+     *
+     * <p>Not persisted: an answer is about the question asked at the time, and
+     * a stored one would go stale as soon as another paper was analysed.
+     *
+     * @param question the question, in the researcher's own words
+     * @return the answer with the records it rests on. {@code isGrounded()}
+     *     false means nothing relevant is stored, and the text says so rather
+     *     than answering from the model's general knowledge
+     * @throws AgentException if the question is unusable
+     */
+    public Answer ask(String question) throws AgentException {
+        return answering.ask(question, memory.getProfile(), memory.getPaperAnalyses());
     }
 
     // --- F13: the solution landscape (UC12) ---------------------------------

@@ -4,6 +4,7 @@ import ca.yorku.eecs3311.consultant.agent.AgentException;
 import ca.yorku.eecs3311.consultant.agent.ProjectContextAgent;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
+import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
@@ -61,6 +62,9 @@ public class MainGUI {
     private final Button whatChanged = new Button("What changed");
     private final Button strategies = new Button("Strategies");
     private final TreeView<StrategyNode> tree = new TreeView<>();
+    private final TextField consultQuery = new TextField();
+    private final Button askButton = new Button("Ask");
+    private final Button priorButton = new Button("Has anyone tried this?");
     private final TextArea detail = new TextArea();
 
     public MainGUI(AppController controller) {
@@ -78,6 +82,8 @@ public class MainGUI {
         // the feed is registered as an observer; the agent never sees this class
         controller.addPaperFeedListener(feed);
         discover.setOnAction(e -> discoverPapers());
+        askButton.setOnAction(e -> consult(false));
+        priorButton.setOnAction(e -> consult(true));
 
         // nothing to analyse until a paper is picked out of the feed
         analyze.setDisable(true);
@@ -154,7 +160,14 @@ public class MainGUI {
 
         status.setWrapText(true);
         grid.add(new HBox(12, save, discover, analyze, compare, checkCode), 1, row++);
-        grid.add(new HBox(12, importProject, whatChanged, strategies, status), 1, row);
+        grid.add(new HBox(12, importProject, whatChanged, strategies, status), 1, row++);
+
+        consultQuery.setPromptText(
+                "ask about your project, or describe an idea to look for prior work");
+        grid.addRow(row, new Label("Consult"),
+                new HBox(12, consultQuery, askButton, priorButton));
+        GridPane.setHgrow(consultQuery, Priority.ALWAYS);
+        consultQuery.setPrefColumnCount(40);
 
         GridPane.setHgrow(question, Priority.ALWAYS);
         for (TextField field : List.of(datasets, models, metrics, results)) {
@@ -225,6 +238,81 @@ public class MainGUI {
         }, "discover-papers");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * F11 and F08 from the GUI. Off the FX thread, like discovery.
+     *
+     * @param priorWork true for F08 (also searches the live literature), false
+     *     for F11 (stored project data only)
+     */
+    private void consult(boolean priorWork) {
+        String text = consultQuery.getText() == null ? "" : consultQuery.getText().strip();
+        if (text.isBlank()) {
+            status.setStyle("-fx-text-fill: #c0392b;");
+            status.setText(priorWork ? "Describe the idea first." : "Type a question first.");
+            consultQuery.setStyle(REQUIRED_STYLE);
+            return;
+        }
+        consultQuery.setStyle("");
+        askButton.setDisable(true);
+        priorButton.setDisable(true);
+        detail.setText(priorWork ? "Searching papers and your own memory..." : "Thinking...");
+
+        Thread worker = new Thread(() -> {
+            try {
+                Answer answer = priorWork ? controller.searchPriorWork(text)
+                        : controller.ask(text);
+                Platform.runLater(() -> {
+                    detail.setText(describe(answer));
+                    consultDone();
+                });
+            } catch (AgentException e) {
+                Platform.runLater(() -> {
+                    detail.setText(e.getMessage());
+                    consultDone();
+                });
+            } catch (RuntimeException e) {
+                // the buttons must come back even when something unforeseen
+                // fails; a dead control with no message is the worst outcome
+                Platform.runLater(() -> {
+                    detail.setText("That could not be answered: " + e);
+                    consultDone();
+                });
+            }
+        }, "consult");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    private void consultDone() {
+        askButton.setDisable(false);
+        priorButton.setDisable(false);
+    }
+
+    /** Renders an answer with the records it rests on, never without them. */
+    private String describe(Answer answer) {
+        StringBuilder b = new StringBuilder();
+        if (!answer.isGrounded()) {
+            // the empty result is shown as prominently as an answer would be
+            b.append(answer.getText());
+            if (!answer.getNote().isBlank()) {
+                b.append("\n\n(").append(answer.getNote()).append(')');
+            }
+            return b.toString();
+        }
+
+        b.append(answer.isTextMissing()
+                ? "The records below matched, but no summary could be written."
+                : answer.getText());
+        b.append("\n\nBased on:");
+        for (String source : answer.getSources()) {
+            b.append("\n  - ").append(source);
+        }
+        if (!answer.getNote().isBlank()) {
+            b.append("\n\n(").append(answer.getNote()).append(')');
+        }
+        return b.toString();
     }
 
     private ScrollPane detailPane() {

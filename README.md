@@ -111,7 +111,11 @@ each.
 ./rc import ~/projects/my-study   # read its current state
 ./rc changes                      # what changed since last time
 
-# 5. the field as a whole
+# 5. ask about what you have gathered
+./rc ask   "which of my papers condition the generator on demographics?"
+./rc prior "oversampling synthetic X-rays for the worst-performing subgroup"
+
+# 6. the field as a whole
 ./rc landscape                    # solution approaches, and where yours sits
 ```
 

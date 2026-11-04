@@ -6,6 +6,7 @@ import ca.yorku.eecs3311.consultant.boot.Bootstrap;
 import ca.yorku.eecs3311.consultant.controller.AppController;
 import ca.yorku.eecs3311.consultant.controller.StorageException;
 import ca.yorku.eecs3311.consultant.controller.ValidationException;
+import ca.yorku.eecs3311.consultant.domain.Answer;
 import ca.yorku.eecs3311.consultant.domain.ComparisonResult;
 import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.RepoSummary;
@@ -86,6 +87,10 @@ public class Cli {
                 return landscape();
             case "repo":
                 return repo(args);
+            case "ask":
+                return ask(args);
+            case "prior":
+                return prior(args);
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -139,6 +144,83 @@ public class Cli {
             out.println();
         }
         return OK;
+    }
+
+    // --- ask / prior work ----------------------------------------------------
+
+    /** F11 — a question answered from stored project data only. */
+    private int ask(String[] args) {
+        if (args.length < 2 || args[1].isBlank()) {
+            err.println("'ask' needs a question, e.g.");
+            err.println("  rc ask \"which of my papers condition on demographics?\"");
+            return USAGE_ERROR;
+        }
+        return answer(() -> controller.ask(joinWords(args)));
+    }
+
+    /** F08 — has anyone tried this. */
+    private int prior(String[] args) {
+        if (args.length < 2 || args[1].isBlank()) {
+            err.println("'prior' needs an idea, e.g.");
+            err.println("  rc prior \"conditioning a diffusion model on patient race\"");
+            return USAGE_ERROR;
+        }
+        return answer(() -> controller.searchPriorWork(joinWords(args)));
+    }
+
+    /**
+     * Joins everything after the command.
+     *
+     * <p>A quoted question arrives as one argument, but an unquoted one arrives
+     * as many, and silently answering only its first word would be worse than
+     * either failing or doing the obvious thing.
+     */
+    private static String joinWords(String[] args) {
+        return String.join(" ", List.of(args).subList(1, args.length)).strip();
+    }
+
+    /** Shared printing for both features, which return the same thing (SD06). */
+    private int answer(AnswerCall call) {
+        Answer answer;
+        try {
+            answer = call.run();
+        } catch (AgentException e) {
+            err.println(e.getMessage());
+            return AGENT_ERROR;
+        }
+
+        out.println();
+        if (!answer.isGrounded()) {
+            // UC07 6a / UC10 4a: an empty result is a statement about the
+            // search, and is printed as prominently as an answer would be
+            out.println(answer.getText());
+            if (!answer.getNote().isBlank()) {
+                out.println();
+                out.println("  (" + answer.getNote() + ")");
+            }
+            return OK;
+        }
+
+        if (answer.isTextMissing()) {
+            out.println("The records below matched, but no summary could be written.");
+        } else {
+            out.println(answer.getText());
+        }
+        out.println();
+        out.println("Based on:");
+        for (String source : answer.getSources()) {
+            out.println("  - " + source);
+        }
+        if (!answer.getNote().isBlank()) {
+            out.println();
+            out.println("  (" + answer.getNote() + ")");
+        }
+        return OK;
+    }
+
+    /** Lets {@link #ask} and {@link #prior} share one printer. */
+    private interface AnswerCall {
+        Answer run() throws AgentException;
     }
 
     // --- paper references ----------------------------------------------------
@@ -623,6 +705,8 @@ public class Cli {
                   import <directory>        read your own project's current state
                   changes                   what changed in your project since last import
                   repo <paper>              does the paper's code exist and look reusable
+  ask "<question>"          answer a question from your stored project data
+  prior "<idea>"            has anyone tried this? searches papers and memory
 
 <paper> is either the arXiv id (2412.20374v2) or the row number from
 the last 'rc discover' listing (2).
