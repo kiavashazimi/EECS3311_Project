@@ -33,6 +33,12 @@ public class PaperFeedPanel implements PaperFeedListener {
     /** Parallel to {@link #rows}, so a selected row maps back to its paper. */
     private final List<RankedPaper> ranked = new ArrayList<>();
 
+    /** Prefix that marks the list as older than what is shown beside it. */
+    static final String STALE_PREFIX = "From your last discovery - ";
+
+    /** True once an answer unrelated to these papers was shown next to them. */
+    private boolean stale;
+
     public PaperFeedPanel() {
         list.setPlaceholder(new Label("No papers yet. Click \"Discover papers\"."));
         // a two-line cell, so the reason is readable rather than truncated
@@ -105,6 +111,7 @@ public class PaperFeedPanel implements PaperFeedListener {
         rows.clear();
         ranked.clear();
         ranked.addAll(papers);
+        stale = false;
         for (RankedPaper ranked : papers) {
             PaperRecord p = ranked.paper();
             StringBuilder row = new StringBuilder();
@@ -121,11 +128,43 @@ public class PaperFeedPanel implements PaperFeedListener {
         }
     }
 
+    /**
+     * Marks the feed as no longer matching what is displayed beside it.
+     *
+     * <p>F08 and F11 write their answer to the detail pane and never touch
+     * this list, so the two panes can be read as one result: an answer about
+     * face perception sitting next to a ranked list about chest X-ray
+     * fairness. The heading says which is which rather than leaving the
+     * researcher to guess.
+     *
+     * <p>Does nothing when the feed is empty — there is no stale list to
+     * label — and nothing on a second call.
+     */
+    public void markStale() {
+        if (stale || ranked.isEmpty()) {
+            return;
+        }
+        stale = true;
+        heading.setText(staleHeading(heading.getText()));
+    }
+
+    /**
+     * @param current the heading as it reads now
+     * @return it with the stale prefix, applied at most once so a repeated
+     *     call cannot stack prefixes, and never replacing what the heading
+     *     already said — a ranking failure stays visible
+     */
+    static String staleHeading(String current) {
+        String text = current == null ? "" : current;
+        return text.startsWith(STALE_PREFIX) ? text : STALE_PREFIX + text;
+    }
+
     /** Shown while a search is running, so the window does not look frozen. */
     public void showSearching() {
         heading.setText("Searching...");
         rows.clear();
         ranked.clear();
+        stale = false;
     }
 
     public void showError(String message) {

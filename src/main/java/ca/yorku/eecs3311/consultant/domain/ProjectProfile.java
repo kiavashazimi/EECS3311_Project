@@ -74,6 +74,53 @@ public class ProjectProfile {
         return containsIgnoreCase(datasets, dataset);
     }
 
+    /**
+     * Whether this profile describes the same project as another.
+     *
+     * <p>Exists because a client's form and the saved profile can disagree.
+     * F03 discovers from the <em>saved</em> profile, so typing a new research
+     * question and pressing "Discover papers" without saving returns a ranked
+     * list for the previous project with nothing on screen to say so. That
+     * happened: a question about facial attractiveness returned chest X-ray
+     * fairness papers. This lets the client warn instead.
+     *
+     * <p>Deliberately strict about order: reordering datasets counts as a
+     * change. A needless warning costs one click, while a missed one hands the
+     * researcher results for a question they are no longer asking.
+     *
+     * @param other the profile to compare against; null counts as different
+     * @return true when the question and all four lists agree, ignoring case
+     *     and surrounding whitespace
+     */
+    public boolean describesSameProjectAs(ProjectProfile other) {
+        if (other == null) {
+            return false;
+        }
+        return sameText(researchQuestion, other.researchQuestion)
+                && sameList(datasets, other.datasets)
+                && sameList(models, other.models)
+                && sameList(metrics, other.metrics)
+                && sameList(ownResults, other.ownResults);
+    }
+
+    private static boolean sameList(List<String> a, List<String> b) {
+        if (a.size() != b.size()) {
+            return false;
+        }
+        for (int i = 0; i < a.size(); i++) {
+            if (!sameText(a.get(i), b.get(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static boolean sameText(String a, String b) {
+        String left = a == null ? "" : a.strip();
+        String right = b == null ? "" : b.strip();
+        return left.equalsIgnoreCase(right);
+    }
+
     private static boolean containsIgnoreCase(List<String> values, String candidate) {
         if (candidate == null) {
             return false;

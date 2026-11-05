@@ -190,15 +190,27 @@ public class MainGUI {
 
     // --- actions -------------------------------------------------------------
 
-    private void save() {
-        clearFieldMarks();
-
+    /**
+     * The profile as the form currently reads it, saved or not.
+     *
+     * <p>One place reads the fields, so {@link #save()} and the unsaved-change
+     * check in {@link #discoverPapers()} cannot drift apart and disagree about
+     * what is on screen.
+     */
+    private ProjectProfile formProfile() {
         ProjectProfile p = new ProjectProfile(question.getText() == null
                 ? "" : question.getText().strip());
         p.setDatasets(items(datasets.getText()));
         p.setModels(items(models.getText()));
         p.setMetrics(items(metrics.getText()));
         p.setOwnResults(items(results.getText()));
+        return p;
+    }
+
+    private void save() {
+        clearFieldMarks();
+
+        ProjectProfile p = formProfile();
 
         try {
             ProjectProfile saved = controller.saveProfile(p);
@@ -222,6 +234,17 @@ public class MainGUI {
      * and look like a crash.
      */
     private void discoverPapers() {
+        // F03 discovers from the SAVED profile, not from what is on screen.
+        // Without this, editing the research question and pressing Discover
+        // returned a ranked list for the previous project and looked like an
+        // answer to the new one.
+        if (!formProfile().describesSameProjectAs(controller.getProfile())) {
+            status.setStyle("-fx-text-fill: #c0392b;");
+            status.setText("Not searched - Discover uses your saved project, and the form"
+                    + " has unsaved changes. Click \"Save project\" first.");
+            return;
+        }
+
         discover.setDisable(true);
         feed.showSearching();
 
@@ -329,6 +352,9 @@ public class MainGUI {
         askButton.setDisable(true);
         priorButton.setDisable(true);
         detail.setText(priorWork ? "Searching papers and your own memory..." : "Thinking...");
+        // from here the detail pane answers a different question from the one
+        // the feed's papers were found for
+        feed.markStale();
 
         Thread worker = new Thread(() -> {
             try {

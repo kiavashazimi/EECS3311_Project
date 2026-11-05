@@ -190,6 +190,14 @@ public class GroundedAnswerAgent extends Agent {
             answer.setNote(join(evidence.gap(), "This is the closest evidence these searches"
                     + " found, not proof that the idea is new or settled."));
         }
+        // The terms are shown whether or not anything was found. Two typos in
+        // a live question ("attractivenes", "precieve") took out two of its
+        // four search terms and the search returned nothing usable, and the
+        // only place the terms appeared was the empty result - so the one case
+        // where a grounded answer rests on a misread question was the one case
+        // that said nothing about what had been read.
+        answer.setNote(join(answer.getNote(), "searched for: "
+                + String.join(", ", retriever.termsOf(pending.text()))));
 
         try {
             answer.setText(tools.callLLM(prompt(evidence, profileIsEvidence)));

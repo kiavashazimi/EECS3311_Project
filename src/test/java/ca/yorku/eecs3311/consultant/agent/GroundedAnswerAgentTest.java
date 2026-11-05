@@ -323,4 +323,39 @@ class GroundedAnswerAgentTest {
         assertTrue(answer.getText().toLowerCase().contains("no matching evidence"),
                 answer.getText());
     }
+
+    // --- showing what was actually searched for ------------------------------
+
+    @Test
+    void aGroundedAnswerAlsoNamesTheTermsItSearchedFor() throws Exception {
+        llm.respondWith("FairDiffusion perturbs a latent diffusion model.");
+
+        Answer answer = agent.ask("What does FairDiffusion do on CheXpert?",
+                profile(), List.of(fairDiffusion()));
+
+        assertTrue(answer.isGrounded());
+        assertTrue(answer.getNote().contains("searched for:"),
+                "a typo silently removes a term, and the terms were only ever shown"
+                        + " when nothing was found: " + answer.getNote());
+        assertTrue(answer.getNote().contains("fairdiffusion")
+                        && answer.getNote().contains("chexpert"),
+                "the note must name the terms, not just mention that there were some: "
+                        + answer.getNote());
+    }
+
+    @Test
+    void thePriorWorkCaveatSurvivesAlongsideTheSearchTerms() throws Exception {
+        source.returning(fromArxiv());
+        llm.respondWith("Two papers generate controllable synthetic radiographs.");
+
+        Answer answer = agent.searchPriorWork(
+                "controllable synthetic chest radiographs for fairness",
+                profile(), List.of());
+
+        assertTrue(answer.isGrounded());
+        assertTrue(answer.getNote().contains("not proof that the idea is new"),
+                "the existing caveat must not be displaced: " + answer.getNote());
+        assertTrue(answer.getNote().contains("searched for:"),
+                "both notes belong in the same answer: " + answer.getNote());
+    }
 }

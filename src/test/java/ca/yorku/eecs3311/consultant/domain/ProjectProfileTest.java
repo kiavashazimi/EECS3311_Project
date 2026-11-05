@@ -65,4 +65,53 @@ class ProjectProfileTest {
         assertThrows(UnsupportedOperationException.class, () -> p.getDatasets().add("x"),
                 "the getter must not expose a mutable view");
     }
+
+    // --- comparing a form against what was saved -----------------------------
+
+    @Test
+    void aProfileDescribesTheSameProjectAsAnIdenticalCopy() {
+        ProjectProfile other = new ProjectProfile("Efficient retrieval for long-context QA");
+        other.setDatasets(List.of("NaturalQuestions-LC"));
+        other.setMetrics(List.of("nDCG@10"));
+
+        assertTrue(complete().describesSameProjectAs(other));
+    }
+
+    @Test
+    void aDifferentResearchQuestionIsADifferentProject() {
+        ProjectProfile edited = complete();
+        edited.setResearchQuestion("Is facial attractiveness perceived automatically?");
+
+        assertFalse(edited.describesSameProjectAs(complete()),
+                "F03 searches the saved profile, so an unsaved edit must be detectable");
+    }
+
+    @Test
+    void caseAndSurroundingWhitespaceAreNotAChange() {
+        ProjectProfile retyped = new ProjectProfile("  efficient Retrieval for long-context QA ");
+        retyped.setDatasets(List.of(" naturalquestions-lc"));
+        retyped.setMetrics(List.of("NDCG@10 "));
+
+        assertTrue(retyped.describesSameProjectAs(complete()),
+                "a warning on whitespace alone would train the researcher to ignore it");
+    }
+
+    @Test
+    void anAddedDatasetIsADifferentProject() {
+        ProjectProfile edited = complete();
+        edited.setDatasets(List.of("NaturalQuestions-LC", "HotpotQA"));
+
+        assertFalse(edited.describesSameProjectAs(complete()));
+    }
+
+    @Test
+    void anEmptyProfileMatchesAnotherEmptyOne() {
+        assertTrue(new ProjectProfile().describesSameProjectAs(new ProjectProfile()),
+                "before anything is saved there is nothing to warn about");
+    }
+
+    @Test
+    void nothingDescribesTheSameProjectAsNull() {
+        assertFalse(complete().describesSameProjectAs(null));
+    }
 }
