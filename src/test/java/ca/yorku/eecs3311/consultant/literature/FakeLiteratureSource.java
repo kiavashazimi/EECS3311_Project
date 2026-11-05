@@ -3,6 +3,7 @@ package ca.yorku.eecs3311.consultant.literature;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /** A test double, so agent tests never reach a real literature API. */
 public final class FakeLiteratureSource implements LiteratureSource {
@@ -57,6 +58,25 @@ public final class FakeLiteratureSource implements LiteratureSource {
             return List.of();
         }
         return List.copyOf(results);
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>Honest about not having a paper. The real bug this interface exists to
+     * prevent was a lookup that returned <em>something</em> for an id it did not
+     * recognise, so this double must never do that either.
+     */
+    @Override
+    public Optional<PaperRecord> findById(String id) throws LiteratureUnavailableException {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must not be null or blank");
+        }
+        queriesSeen.add("id:" + id.strip());
+        if (unavailableReason != null) {
+            throw new LiteratureUnavailableException(unavailableReason);
+        }
+        return results.stream().filter(p -> p.getId().equalsIgnoreCase(id.strip())).findFirst();
     }
 
     @Override

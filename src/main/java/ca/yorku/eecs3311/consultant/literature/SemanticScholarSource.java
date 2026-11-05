@@ -14,6 +14,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A CONCRETE STRATEGY: searches Semantic Scholar's Graph API.
@@ -65,6 +66,10 @@ public class SemanticScholarSource implements LiteratureSource {
 
     private static final String ENDPOINT =
             "https://api.semanticscholar.org/graph/v1/paper/search";
+
+    /** Single-paper lookup; the id is appended. */
+    private static final String ENDPOINT_PAPER =
+            "https://api.semanticscholar.org/graph/v1/paper/";
 
     /**
      * Only what {@link #parse} actually reads.
@@ -212,6 +217,44 @@ public class SemanticScholarSource implements LiteratureSource {
     /**
      * {@inheritDoc}
      *
+     * <p>A real lookup: {@code /graph/v1/paper/{id}} returns one paper, or 404.
+     * Putting the id into the free-text {@code query} parameter instead — which
+     * is what the application used to do for every source — made this endpoint
+     * read it as keywords and return an unrelated paper, which was then
+     * analysed and stored under the requested id.
+     *
+     * <p>The service accepts its own hash ids and prefixed external ones such
+     * as {@code arXiv:2304.09218}, so an arXiv id is passed through in the form
+     * it understands.
+     */
+    @Override
+    public Optional<PaperRecord> findById(String id) throws LiteratureUnavailableException {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must not be null or blank");
+        }
+        String wanted = id.strip();
+        String lookup = wanted.matches("\\d{4}\\.\\d{4,5}(v\\d+)?")
+                ? "arXiv:" + wanted.replaceAll("v\\d+$", "")
+                : wanted;
+
+        String body = request(ENDPOINT_PAPER + URLEncoder.encode(lookup, StandardCharsets.UTF_8)
+                + "?fields=" + FIELDS, true);
+        if (body == null) {
+            return Optional.empty();
+        }
+        JsonNode node;
+        try {
+            node = MAPPER.readTree(body);
+        } catch (IOException e) {
+            throw new LiteratureUnavailableException(
+                    "Semantic Scholar's reply could not be read: " + e.getMessage(), e);
+        }
+        return Optional.ofNullable(toRecord(node));
+    }
+
+    /**
+     * {@inheritDoc}
+     *
      * <p>The query is sent as given. Callers already reduce a question to a few
      * terms and relax it when nothing comes back, and they must: measured with
      * a real key, a nine-word question returned nothing here, exactly as it
@@ -253,6 +296,16 @@ public class SemanticScholarSource implements LiteratureSource {
      * start working, and retrying it only delays the fallback to another source.
      */
     private String request(String url) throws LiteratureUnavailableException {
+        return request(url, false);
+    }
+
+    /**
+     * @param notFoundIsEmpty true for a single-paper lookup, where HTTP 404
+     *     means "this source does not have it" rather than a failure
+     * @return the body, or null when the paper was simply not found
+     */
+    private String request(String url, boolean notFoundIsEmpty)
+            throws LiteratureUnavailableException {
         int attempts = retries + 1;
         for (int attempt = 1; attempt <= attempts; attempt++) {
             Response response;
@@ -279,6 +332,13 @@ public class SemanticScholarSource implements LiteratureSource {
                                         : ""));
                     }
                     pause(backoffFor(attempt));
+                }
+                case 404 -> {
+                    if (notFoundIsEmpty) {
+                        return null;
+                    }
+                    throw new LiteratureUnavailableException(
+                            "Semantic Scholar returned HTTP 404.");
                 }
                 case 401, 403 -> throw new LiteratureUnavailableException(
                         "Semantic Scholar rejected the request (HTTP " + response.status()
@@ -355,31 +415,44 @@ public class SemanticScholarSource implements LiteratureSource {
 
         List<PaperRecord> papers = new ArrayList<>();
         for (JsonNode node : root.path("data")) {
-            String title = node.path("title").asText("").strip();
-            if (title.isEmpty()) {
-                continue;
+            PaperRecord paper = toRecord(node);
+            if (paper != null) {
+                papers.add(paper);
             }
-            String paperId = node.path("paperId").asText("").strip();
-            String arxivId = node.path("externalIds").path("ArXiv").asText("").strip();
-
-            // the arXiv id when there is one: analyze, compare and repo all look
-            // a paper up by it, so preferring it keeps those features working on
-            // results that came from here
-            PaperRecord paper = new PaperRecord(
-                    arxivId.isEmpty() ? paperId : arxivId,
-                    title,
-                    node.path("venue").asText("").strip().isEmpty()
-                            ? "Semantic Scholar" : node.path("venue").asText().strip(),
-                    node.path("year").isMissingNode() ? "" : node.path("year").asText(""));
-            paper.setSummary(node.path("abstract").asText("").strip());
-
-            String pdf = node.path("openAccessPdf").path("url").asText("").strip();
-            paper.setUrl(pdf.isEmpty()
-                    ? "https://www.semanticscholar.org/paper/" + paperId
-                    : pdf);
-            papers.add(paper);
         }
         return papers;
+    }
+
+    /**
+     * One JSON object to one {@link PaperRecord}, or null when it has no title.
+     *
+     * <p>A paper with no title cannot be shown, compared or cited, and a blank
+     * row in a result list reads as a tool malfunction.
+     */
+    private PaperRecord toRecord(JsonNode node) {
+        String title = node.path("title").asText("").strip();
+        if (title.isEmpty()) {
+            return null;
+        }
+        String paperId = node.path("paperId").asText("").strip();
+        String arxivId = node.path("externalIds").path("ArXiv").asText("").strip();
+
+        // the arXiv id when there is one: analyze, compare and repo all look a
+        // paper up by it, so preferring it keeps those features working on
+        // results that came from here
+        PaperRecord paper = new PaperRecord(
+                arxivId.isEmpty() ? paperId : arxivId,
+                title,
+                node.path("venue").asText("").strip().isEmpty()
+                        ? "Semantic Scholar" : node.path("venue").asText().strip(),
+                node.path("year").isMissingNode() ? "" : node.path("year").asText(""));
+        paper.setSummary(node.path("abstract").asText("").strip());
+
+        String pdf = node.path("openAccessPdf").path("url").asText("").strip();
+        paper.setUrl(pdf.isEmpty()
+                ? "https://www.semanticscholar.org/paper/" + paperId
+                : pdf);
+        return paper;
     }
 
     /** The real transport. The key goes in a header, never in the URL or a log. */

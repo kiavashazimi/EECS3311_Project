@@ -13,6 +13,7 @@ import ca.yorku.eecs3311.consultant.repo.RepositoryUnavailableException;
 import ca.yorku.eecs3311.consultant.llm.LLMUnavailableException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The single doorway through which agents reach the outside world — the LLM
@@ -171,6 +172,45 @@ public class ToolManager {
                     "both sources failed - " + literatureSource.name() + ": "
                             + cause.getMessage() + "; " + tool + ": " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Looks one paper up by id, through whichever source is configured.
+     *
+     * @param id the identifier, never null or blank
+     * @return the paper, or empty when no configured source has it
+     * @throws LiteratureUnavailableException if no source could be reached
+     */
+    public Optional<PaperRecord> findPaper(String id) throws LiteratureUnavailableException {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must not be null or blank");
+        }
+        if (literatureSource == null) {
+            throw new IllegalStateException(
+                    "no literature source set - call setLiteratureSource() first");
+        }
+        String tool = literatureSource.name();
+        try {
+            Optional<PaperRecord> found = literatureSource.findById(id.strip());
+            callLog.add(tool + " lookup: " + id.strip() + " -> "
+                    + (found.isPresent() ? "found" : "not found"));
+            if (found.isPresent() || fallbackLiteratureSource == null) {
+                return found;
+            }
+        } catch (LiteratureUnavailableException e) {
+            callLog.add(tool + " lookup: " + id.strip() + " -> failed (" + e.getMessage() + ")");
+            if (fallbackLiteratureSource == null) {
+                throw e;
+            }
+        }
+        // the other source may be the one that issued this id, or may simply
+        // carry the same paper
+        String other = fallbackLiteratureSource.name();
+        callLog.add("falling back to " + other + " for lookup " + id.strip());
+        Optional<PaperRecord> found = fallbackLiteratureSource.findById(id.strip());
+        callLog.add(other + " lookup: " + id.strip() + " -> "
+                + (found.isPresent() ? "found" : "not found"));
+        return found;
     }
 
     /**

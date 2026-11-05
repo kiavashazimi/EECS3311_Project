@@ -2,6 +2,7 @@ package ca.yorku.eecs3311.consultant.literature;
 
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * One way of searching the literature — the STRATEGY of section 4 of the
@@ -52,6 +53,24 @@ public interface LiteratureSource {
      */
     List<PaperRecord> search(String query, SearchIntent intent)
             throws LiteratureUnavailableException;
+
+    /**
+     * Fetches one paper by this source's own identifier.
+     *
+     * <p>Deliberately not a default method. Before this existed, callers faked
+     * a lookup with {@code search("id:" + id)} — arXiv's query syntax — and
+     * every source was assumed to understand it. Semantic Scholar does not: it
+     * read the id as keywords and returned an unrelated paper, which was then
+     * analysed and stored as the paper that had been asked for. A default
+     * implementation here would have re-created exactly that assumption, so
+     * each source is made to say how it looks a paper up.
+     *
+     * @param id an identifier this source issued, never null or blank
+     * @return the paper, or empty when this source does not have it. Empty is a
+     *     normal answer, not a failure
+     * @throws LiteratureUnavailableException if the source cannot be reached
+     */
+    Optional<PaperRecord> findById(String id) throws LiteratureUnavailableException;
 
     /** @return a short name for this source, for logs and the UI. */
     String name();

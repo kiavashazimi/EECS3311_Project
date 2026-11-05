@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import java.util.List;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -314,5 +315,39 @@ class ArxivSourceTest {
     @Test
     void reportsItsOwnName() {
         assertEquals("arXiv", sourceReturning(FEED).name());
+    }
+
+    // --- looking one paper up by id ------------------------------------------
+
+    @Test
+    void aLookupReturnsTheRequestedPaper() throws Exception {
+        Optional<PaperRecord> found = sourceReturning(FEED).findById("2301.12345v2");
+
+        assertTrue(found.isPresent());
+        assertEquals("2301.12345v2", found.get().getId());
+    }
+
+    @Test
+    void aVersionSuffixDoesNotMakeItADifferentPaper() throws Exception {
+        // arXiv answers 2301.12345 with 2301.12345v2; refusing that would make
+        // every unversioned id unusable
+        assertTrue(sourceReturning(FEED).findById("2301.12345").isPresent());
+    }
+
+    @Test
+    void aLookupThatMatchesNothingReturnsEmptyRatherThanAnUnrelatedPaper() throws Exception {
+        // arXiv answers an unmatched id: query with other papers, not with
+        // none. Taking the first result is how an unrelated paper once got
+        // analysed and stored under the id that had been asked for.
+        assertTrue(sourceReturning(FEED).findById("9999.99999").isEmpty(),
+                "the feed has two papers, neither of them this one");
+    }
+
+    @Test
+    void aBlankLookupIsRejected() {
+        assertThrows(IllegalArgumentException.class,
+                () -> sourceReturning(FEED).findById(" "));
+        assertThrows(IllegalArgumentException.class,
+                () -> sourceReturning(FEED).findById(null));
     }
 }

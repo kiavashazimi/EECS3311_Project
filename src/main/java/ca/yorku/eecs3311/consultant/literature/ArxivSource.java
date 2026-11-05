@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import javax.xml.XMLConstants;
@@ -77,6 +78,36 @@ public class ArxivSource implements LiteratureSource {
     @Override
     public String name() {
         return "arXiv";
+    }
+
+    /**
+     * {@inheritDoc}
+     *
+     * <p>arXiv's API has no separate lookup, but it does understand
+     * {@code id:<identifier>} in a normal query, so that is a real lookup here
+     * rather than a guess. The result is still checked against the id that was
+     * asked for: a query that matched nothing returns other papers, not none.
+     */
+    @Override
+    public Optional<PaperRecord> findById(String id) throws LiteratureUnavailableException {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("id must not be null or blank");
+        }
+        for (PaperRecord found : search("id:" + id.strip(), SearchIntent.MOST_RELEVANT)) {
+            if (sameArxivId(found.getId(), id.strip())) {
+                return Optional.of(found);
+            }
+        }
+        return Optional.empty();
+    }
+
+    /** arXiv appends a version, so 2304.09218 and 2304.09218v1 are one paper. */
+    private static boolean sameArxivId(String a, String b) {
+        return withoutVersion(a).equalsIgnoreCase(withoutVersion(b));
+    }
+
+    private static String withoutVersion(String id) {
+        return id == null ? "" : id.replaceAll("v\\d+$", "");
     }
 
     @Override

@@ -246,16 +246,31 @@ public class AppController {
         if (paperId == null || paperId.isBlank()) {
             throw new IllegalArgumentException("paperId must not be null or blank");
         }
-        List<PaperRecord> found;
+        String wanted = paperId.strip();
+        PaperRecord found;
         try {
-            found = tools.search("id:" + paperId.strip(), SearchIntent.MOST_RELEVANT);
+            found = tools.findPaper(wanted).orElse(null);
         } catch (LiteratureUnavailableException e) {
-            throw new AgentException("could not look up " + paperId + ": " + e.getMessage(), e);
+            throw new AgentException("could not look up " + wanted + ": " + e.getMessage(), e);
         }
-        if (found.isEmpty()) {
-            throw new AgentException("no paper found with id " + paperId);
+        if (found == null) {
+            throw new AgentException("no paper found with id " + wanted);
         }
-        return analyzePaper(found.get(0));
+        if (!sameId(found.getId(), wanted)) {
+            // Belt and braces behind findById. A free-text lookup once returned
+            // an unrelated paper for an id the source did not understand, and it
+            // was analysed and stored as the paper that had been asked for.
+            // Analysing the wrong paper silently is worse than not analysing.
+            throw new AgentException("no paper found with id " + wanted
+                    + " - the source returned " + found.getId() + " instead");
+        }
+        return analyzePaper(found);
+    }
+
+    /** arXiv appends a version, so 2304.09218 and 2304.09218v1 are one paper. */
+    private static boolean sameId(String a, String b) {
+        return a != null && b != null
+                && a.replaceAll("v\\d+$", "").equalsIgnoreCase(b.replaceAll("v\\d+$", ""));
     }
 
     /**

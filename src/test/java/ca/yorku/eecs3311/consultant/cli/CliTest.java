@@ -34,6 +34,7 @@ class CliTest {
     Path tempDir;
 
     private Cli cli;
+    private AppController controller;
     private ToolManager tools;
     private FakeLLMClient llm;
     private FakeLiteratureSource source;
@@ -47,7 +48,7 @@ class CliTest {
         source = new FakeLiteratureSource("arXiv");
         tools = new ToolManager(llm);
         tools.setLiteratureSource(source);
-        AppController controller = new AppController(ProjectMemory.getInstance(),
+        controller = new AppController(ProjectMemory.getInstance(),
                 tools, new MemoryStore(tempDir));
         out = new ByteArrayOutputStream();
         err = new ByteArrayOutputStream();
@@ -1086,5 +1087,37 @@ class CliTest {
         assertTrue(printed.contains("could not be read"), printed);
         assertFalse(printed.contains("unavailable"),
                 "the model answered; its answer was unusable: " + printed);
+    }
+
+    // --- looking a paper up by id -------------------------------------------
+
+    @Test
+    void aPaperIsNeverAnalysedUnderAnIdThatIsNotItsOwn() {
+        // the real failure: an id the source did not understand was read as
+        // free text, an unrelated paper came back, and it was analysed and
+        // stored as the paper that had been asked for
+        givenAProfile();
+        source.returning(paper("2506.01375", "Generative Next POI Recommendation"));
+        llm.respondWith(ANALYSIS_REPLY);
+
+        assertNotEquals(0, cli.run(new String[] {
+            "analyze", "534f4abde70ca89412e269c14ac6f3c1a6502478"}));
+
+        assertTrue(stderr().contains("no paper found"), stderr());
+        assertTrue(controller.getAnalyses().isEmpty(),
+                "nothing may be stored when the wrong paper came back");
+    }
+
+    @Test
+    void theRightPaperIsStillFoundAmongSeveral() {
+        givenAProfile();
+        source.returning(paper("1", "Something else"),
+                paper("2412.20374v2", "FairDiffusion"),
+                paper("9", "Another thing"));
+        llm.respondWith(ANALYSIS_REPLY);
+
+        assertEquals(0, cli.run(new String[] {"analyze", "2412.20374v2"}), stderr());
+
+        assertEquals("2412.20374v2", controller.getAnalyses().get(0).getPaper().getId());
     }
 }
