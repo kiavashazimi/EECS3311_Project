@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import ca.yorku.eecs3311.consultant.agent.ToolManager;
+import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import ca.yorku.eecs3311.consultant.llm.FakeLLMClient;
 import ca.yorku.eecs3311.consultant.memory.MemoryStore;
@@ -75,14 +77,24 @@ class AppControllerTest {
     // --- the validation path (SD01's ValidationError branch) ----------------
 
     @Test
-    void anIncompleteProfileIsRejectedAndNamesTheFields() {
-        ProjectProfile bare = new ProjectProfile("a question with nothing else");
+    void onlyABlankQuestionIsRejectedAndTheFieldIsNamed() {
+        ValidationException e = assertThrows(ValidationException.class,
+                () -> controller.saveProfile(new ProjectProfile("   ")));
 
-        ValidationException e =
-                assertThrows(ValidationException.class, () -> controller.saveProfile(bare));
+        assertEquals(List.of("researchQuestion"), e.getFields(),
+                "the GUI marks the field inline, so it needs its name");
+    }
 
-        assertEquals(List.of("datasets", "metrics"), e.getFields(),
-                "the GUI marks these fields inline, so it needs their names");
+    @Test
+    void aQuestionOnlyProfileIsSavedAndSaysWhatItIsMissing() throws Exception {
+        ProjectProfile bare = new ProjectProfile("does concept mapping aid recall?");
+
+        ProjectProfile saved = controller.saveProfile(bare);
+
+        assertEquals("does concept mapping aid recall?", saved.getResearchQuestion());
+        assertEquals(List.of("datasets", "metrics"), saved.recommendedFieldsMissing(),
+                "saving it is not the same as pretending it is complete");
+        assertTrue(store.exists(), "a profile without datasets is still worth persisting");
     }
 
     @Test
@@ -100,7 +112,7 @@ class AppControllerTest {
         controller.saveProfile(complete());
 
         assertThrows(ValidationException.class,
-                () -> controller.saveProfile(new ProjectProfile("incomplete")));
+                () -> controller.saveProfile(new ProjectProfile("  ")));
 
         assertEquals(List.of("CheXpert"), controller.getProfile().getDatasets(),
                 "the previous profile must survive a failed save");
@@ -151,5 +163,44 @@ class AppControllerTest {
     @Test
     void reportsWhereTheProjectIsStored() {
         assertEquals(store.getFile(), controller.getStorageLocation());
+    }
+
+    // --- starting a new project ---------------------------------------------
+
+    @Test
+    void startingANewProjectDiscardsTheProfileAndTheAnalyses() throws Exception {
+        controller.saveProfile(complete());
+        ProjectMemory.getInstance().addPaperAnalysis(anAnalysis());
+        assertEquals(1, controller.getProfile().getDatasets().size());
+
+        controller.startNewProject();
+
+        assertTrue(controller.getProfile().getResearchQuestion().isBlank());
+        assertTrue(controller.getProfile().getDatasets().isEmpty());
+        assertTrue(ProjectMemory.getInstance().getPaperAnalyses().isEmpty(),
+                "the solution landscape is built from these, so they must go too");
+    }
+
+    @Test
+    void aNewProjectIsPersistedRatherThanOnlyCleardInMemory() throws Exception {
+        controller.saveProfile(complete());
+        ProjectMemory.getInstance().addPaperAnalysis(anAnalysis());
+
+        controller.startNewProject();
+
+        // the next process must not read the old project back
+        ProjectMemory.getInstance().saveProfile(complete());
+        assertTrue(controller.loadStoredProject());
+        assertTrue(controller.getProfile().getResearchQuestion().isBlank(),
+                "the cleared state has to reach disk, not just memory");
+        assertTrue(ProjectMemory.getInstance().getPaperAnalyses().isEmpty());
+    }
+
+    private static PaperAnalysis anAnalysis() {
+        PaperAnalysis a = new PaperAnalysis(
+                new PaperRecord("2412.20374v2", "FairDiffusion", "arXiv cs.CV", "2024-12-29"));
+        a.setMethod("a fair Bayesian perturbation inside a latent diffusion model");
+        a.setStrategyTags(List.of("diffusion model"));
+        return a;
     }
 }

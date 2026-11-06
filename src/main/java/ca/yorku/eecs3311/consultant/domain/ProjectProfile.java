@@ -36,6 +36,18 @@ public class ProjectProfile {
      * names, not just a boolean, is what lets both features say <em>which</em>
      * field is at fault.
      *
+     * <p><strong>Only the research question is required.</strong> Datasets and
+     * metrics were required too, until a researcher working on a question with
+     * neither typed {@code "no specific"} into both fields to get past the
+     * form. That string is not inert: it reached arXiv as a quoted search term,
+     * went into the ranking prompt as a dataset name, and made
+     * {@code ComparabilityChecker} answer {@code NOT_COMPARABLE} where it had
+     * to answer {@code CANNOT_DETERMINE} — an absence of evidence turned into a
+     * claim, which is the one thing the three-valued verdict exists to stop.
+     * A blank field is read correctly everywhere; an invented one is not, so
+     * the wall was producing worse data than the gap it closed. See
+     * {@link #recommendedFieldsMissing()}.
+     *
      * @return the missing field names, empty if the profile is usable
      */
     public List<String> missingFields() {
@@ -43,6 +55,22 @@ public class ProjectProfile {
         if (isBlank(researchQuestion)) {
             missing.add("researchQuestion");
         }
+        return missing;
+    }
+
+    /**
+     * Names the fields that are not required but cost the researcher something
+     * when they are left out.
+     *
+     * <p>Separate from {@link #missingFields()} because the two drive different
+     * behaviour: that list blocks a save, this one only warrants a note saying
+     * what degrades. Without datasets and metrics, F03 searches on the research
+     * question alone and F07 can only ever reach "cannot determine".
+     *
+     * @return the recommended field names that are empty, in form order
+     */
+    public List<String> recommendedFieldsMissing() {
+        List<String> missing = new ArrayList<>();
         if (datasets.isEmpty()) {
             missing.add("datasets");
         }
@@ -52,10 +80,21 @@ public class ProjectProfile {
         return missing;
     }
 
-    /** @return true when every required field is populated */
+    /** @return true when every required field is populated, so this can be saved */
     @JsonIgnore
     public boolean isComplete() {
         return missingFields().isEmpty();
+    }
+
+    /**
+     * @return true when nothing is missing at all, required or recommended.
+     *     Distinct from {@link #isComplete()}: a bare research question is
+     *     savable but not fully described, and reporting it as complete would
+     *     overstate what the other features have to work with
+     */
+    @JsonIgnore
+    public boolean isFullyDescribed() {
+        return missingFields().isEmpty() && recommendedFieldsMissing().isEmpty();
     }
 
     /**

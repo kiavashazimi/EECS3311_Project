@@ -18,9 +18,36 @@ class ProjectProfileTest {
     }
 
     @Test
-    void newProfileReportsEveryRequiredFieldMissing() {
-        assertEquals(List.of("researchQuestion", "datasets", "metrics"),
-                new ProjectProfile().missingFields());
+    void onlyTheResearchQuestionIsRequired() {
+        // Datasets and metrics were required until a researcher with neither
+        // typed "no specific" into both to get past the form. That string then
+        // reached arXiv as a quoted search term and made F07 answer
+        // NOT_COMPARABLE where it had to answer CANNOT_DETERMINE.
+        assertEquals(List.of("researchQuestion"), new ProjectProfile().missingFields());
+    }
+
+    @Test
+    void datasetsAndMetricsAreRecommendedRatherThanRequired() {
+        ProjectProfile questionOnly = new ProjectProfile("does concept mapping aid recall?");
+
+        assertTrue(questionOnly.isComplete(), "a question alone must be savable");
+        assertEquals(List.of("datasets", "metrics"), questionOnly.recommendedFieldsMissing(),
+                "the client has to name what the researcher gives up by leaving them out");
+    }
+
+    @Test
+    void aProfileWithEverythingRecommendsNothing() {
+        assertTrue(complete().recommendedFieldsMissing().isEmpty());
+        assertTrue(complete().isFullyDescribed());
+    }
+
+    @Test
+    void savableAndFullyDescribedAreDifferentQuestions() {
+        ProjectProfile questionOnly = new ProjectProfile("does concept mapping aid recall?");
+
+        assertTrue(questionOnly.isComplete());
+        assertFalse(questionOnly.isFullyDescribed(),
+                "'rc profile' must not report a bare question as fully described");
     }
 
     @Test

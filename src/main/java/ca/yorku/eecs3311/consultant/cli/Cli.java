@@ -94,6 +94,8 @@ public class Cli {
                 return prior(args);
             case "digest":
                 return digest();
+            case "reset":
+                return reset(args);
             case "where":
                 out.println(controller.getStorageLocation());
                 return OK;
@@ -652,12 +654,44 @@ public class Cli {
         }
     }
 
+    /**
+     * Discards the project, but only when asked twice.
+     *
+     * <p>There is no prompt: the CLI is used in scripts and from a shell, and
+     * a command that blocks on stdin cannot be used in either. An explicit
+     * {@code --confirm} is the same safeguard without that cost, and the
+     * default run reports exactly what would be lost.
+     */
+    private int reset(String[] args) {
+        boolean confirmed = args.length > 1 && "--confirm".equals(args[1]);
+        if (!confirmed) {
+            ProjectProfile p = controller.getProfile();
+            int analyses = controller.getAnalyses().size();
+            err.println("Nothing was discarded. 'reset' deletes the whole project:");
+            err.println("  question : "
+                    + (p.getResearchQuestion().isBlank() ? "(none)" : p.getResearchQuestion()));
+            err.println("  analyses : " + analyses + " paper(s)");
+            err.println("This cannot be undone. Run 'rc reset --confirm' to go ahead.");
+            return USAGE_ERROR;
+        }
+
+        try {
+            controller.startNewProject();
+        } catch (StorageException e) {
+            err.println(e.getMessage());
+            return STORAGE_ERROR;
+        }
+        out.println("Project cleared. Set a new one with 'rc profile set --question \"...\"'.");
+        return OK;
+    }
+
     private int profileShow() {
         ProjectProfile p = controller.getProfile();
         if (p.getResearchQuestion().isBlank() && p.getDatasets().isEmpty()) {
             out.println("No project profile yet. Set one with:");
-            out.println("  rc profile set --question \"...\" --datasets \"...\" "
-                    + "--metrics \"...\"");
+            out.println("  rc profile set --question \"...\"");
+            out.println("Add --datasets and --metrics when you have them; they sharpen"
+                    + " discovery and comparability but are not required.");
             return OK;
         }
 
@@ -667,9 +701,17 @@ public class Cli {
         out.println("  models   : " + String.join(", ", p.getModels()));
         out.println("  metrics  : " + String.join(", ", p.getMetrics()));
         out.println("  results  : " + String.join(", ", p.getOwnResults()));
-        out.println("  complete : " + p.isComplete());
+        // "complete" alone claimed more than it meant once datasets and
+        // metrics stopped being required: a bare question is savable, not
+        // fully described
+        out.println("  usable   : " + p.isComplete());
         if (!p.isComplete()) {
             out.println("  missing  : " + String.join(", ", p.missingFields()));
+        }
+        if (!p.recommendedFieldsMissing().isEmpty()) {
+            out.println("  no " + String.join(" or ", p.recommendedFieldsMissing())
+                    + " - discovery will search on your question alone, and"
+                    + " comparability can only say \"cannot determine\"");
         }
         return OK;
     }
@@ -693,7 +735,8 @@ public class Cli {
             controller.saveProfile(p);
         } catch (ValidationException e) {
             err.println("Nothing was saved. Missing required field(s): "
-                    + String.join(", ", e.getFields()));
+                    + String.join(", ", e.getFields())
+                    + " (datasets and metrics are recommended, not required)");
             return VALIDATION_ERROR;
         } catch (StorageException e) {
             err.println(e.getMessage());
@@ -770,12 +813,13 @@ the last 'rc discover' listing (2).
                   landscape                 the space of solution approaches, and where
                                             your own approach sits in it
                   where                     print the file the project is stored in
+                  reset --confirm           discard the whole project and start over
                   help                      this message
 
                 profile set options
                   --question "..."          the research question          (required)
-                  --datasets "a, b"         datasets used                  (required)
-                  --metrics  "a, b"         metrics reported               (required)
+                  --datasets "a, b"         datasets used               (recommended)
+                  --metrics  "a, b"         metrics reported            (recommended)
                   --models   "a, b"         models used
                   --results  "a, b"         your own results so far
 

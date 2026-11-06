@@ -552,6 +552,38 @@ public class AppController {
         return store.load(memory);
     }
 
+    /**
+     * Discards the whole project — profile, analyses, snapshot and listings —
+     * and writes the empty state to disk.
+     *
+     * <p>Not a Stage 1 feature. {@code ProjectMemory.clear()} existed for
+     * tests, and its javadoc already named this as its other purpose, but
+     * nothing reached it: switching to a new research question left every
+     * earlier analysis in memory, so F13 kept mapping the previous project's
+     * solution families and there was no way to start over short of deleting
+     * the file by hand.
+     *
+     * <p>The write is part of the operation, not an afterthought. Clearing
+     * memory alone would leave the old project on disk, and the next process
+     * would load it straight back.
+     *
+     * <p>Irreversible, so both clients confirm before calling it.
+     *
+     * @throws StorageException if the cleared state cannot be written, with
+     *     memory already cleared — the caller must say so rather than imply
+     *     the old project is still intact
+     */
+    public void startNewProject() throws StorageException {
+        memory.clear();
+        try {
+            store.save(memory);
+        } catch (IOException e) {
+            throw new StorageException(
+                    "the project was cleared here, but " + store.getFile()
+                            + " could not be rewritten", e);
+        }
+    }
+
     /** @return the file the project is stored in, for the UI to show */
     public Path getStorageLocation() {
         return store.getFile();

@@ -136,18 +136,28 @@ class CliTest {
     }
 
     @Test
-    void anIncompleteProfileFailsAndNamesTheMissingFields() {
-        int code = cli.run(new String[] {"profile", "set", "--question", "only a question"});
+    void aProfileWithNoQuestionFailsAndNamesTheMissingField() {
+        // this used to assert the same for a question with no datasets or
+        // metrics; those are recommended rather than required now, so the
+        // test moved to the field that still blocks a save
+        int code = cli.run(new String[] {
+            "profile", "set", "--datasets", "CheXpert", "--metrics", "AUC",
+        });
 
         assertNotEquals(0, code);
-        assertTrue(stderr().contains("datasets"), stderr());
-        assertTrue(stderr().contains("metrics"), stderr());
+        assertTrue(stderr().contains("researchQuestion"), stderr());
     }
 
     @Test
-    void anIncompleteProfileChangesNothing() {
-        cli.run(new String[] {"profile", "set", "--question", "only a question"});
+    void aProfileWithNoQuestionChangesNothing() {
+        // SD01: a validation failure persists nothing at all
+        cli.run(new String[] {
+            "profile", "set", "--datasets", "CheXpert", "--metrics", "AUC",
+        });
+
         assertTrue(ProjectMemory.getInstance().getProfile().getResearchQuestion().isBlank());
+        assertTrue(ProjectMemory.getInstance().getProfile().getDatasets().isEmpty(),
+                "a rejected save must not leak the fields that were filled in");
     }
 
     @Test
@@ -1119,5 +1129,51 @@ class CliTest {
         assertEquals(0, cli.run(new String[] {"analyze", "2412.20374v2"}), stderr());
 
         assertEquals("2412.20374v2", controller.getAnalyses().get(0).getPaper().getId());
+    }
+
+    // --- starting a new project ----------------------------------------------
+
+    @Test
+    void resetWithoutConfirmationChangesNothingAndSaysWhatWouldBeLost() {
+        cli.run(new String[] {
+            "profile", "set", "--question", "a real question",
+            "--datasets", "CheXpert", "--metrics", "AUC",
+        });
+        out.reset();
+
+        int code = cli.run(new String[] {"reset"});
+
+        assertNotEquals(0, code, "a destructive command must not succeed by default");
+        assertEquals("a real question",
+                ProjectMemory.getInstance().getProfile().getResearchQuestion(),
+                "nothing may be discarded without --confirm");
+        assertTrue(stderr().contains("--confirm"), stderr());
+    }
+
+    @Test
+    void resetWithConfirmationClearsTheProject() {
+        cli.run(new String[] {
+            "profile", "set", "--question", "a real question",
+            "--datasets", "CheXpert", "--metrics", "AUC",
+        });
+        out.reset();
+
+        assertEquals(0, cli.run(new String[] {"reset", "--confirm"}), stderr());
+        assertTrue(ProjectMemory.getInstance().getProfile().getResearchQuestion().isBlank());
+        assertTrue(ProjectMemory.getInstance().getPaperAnalyses().isEmpty());
+    }
+
+    @Test
+    void aProfileWithNoDatasetsSavesAndTheMissingFieldsAreNamed() {
+        int code = cli.run(new String[] {
+            "profile", "set", "--question", "does concept mapping aid recall?",
+        });
+
+        assertEquals(0, code, stderr());
+        assertEquals("does concept mapping aid recall?",
+                ProjectMemory.getInstance().getProfile().getResearchQuestion(),
+                "a question with no datasets must still be savable");
+        assertTrue(stdout().contains("datasets") && stdout().contains("metrics"),
+                "the output must name what was left out: " + stdout());
     }
 }
