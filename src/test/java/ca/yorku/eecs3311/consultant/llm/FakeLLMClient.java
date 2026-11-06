@@ -15,12 +15,29 @@ import java.util.List;
 public final class FakeLLMClient implements LLMClient {
 
     private final List<String> promptsSeen = new ArrayList<>();
+    private final List<String> scripted = new ArrayList<>();
     private String nextResponse = "fake response";
     private String unavailableReason;
 
     /** Makes the next call succeed with {@code response}. */
     public FakeLLMClient respondWith(String response) {
         this.nextResponse = response;
+        this.unavailableReason = null;
+        return this;
+    }
+
+    /**
+     * Makes successive calls return successive responses.
+     *
+     * <p>Needed once one feature makes several calls in one run: F13 asks for
+     * the family summaries and then for each family's sub-branches, and a
+     * single canned reply cannot stand in for both. Once the script runs out
+     * the last response repeats, so a test only has to script the calls it
+     * actually cares about.
+     */
+    public FakeLLMClient respondInOrder(String... responses) {
+        scripted.clear();
+        scripted.addAll(List.of(responses));
         this.unavailableReason = null;
         return this;
     }
@@ -39,6 +56,9 @@ public final class FakeLLMClient implements LLMClient {
         promptsSeen.add(prompt);
         if (unavailableReason != null) {
             throw new LLMUnavailableException(unavailableReason);
+        }
+        if (!scripted.isEmpty()) {
+            return scripted.size() == 1 ? scripted.get(0) : scripted.remove(0);
         }
         return nextResponse;
     }

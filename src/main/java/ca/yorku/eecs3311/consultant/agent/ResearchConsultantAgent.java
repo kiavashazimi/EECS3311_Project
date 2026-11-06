@@ -12,8 +12,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -240,7 +242,16 @@ public class ResearchConsultantAgent extends Agent {
 
         markOwnApproach(root, profile);
         if (root.paperCount() >= MIN_PAPERS_FOR_SUBBRANCHES) {
-            describeBranches(root);
+            if (builtInFamiliesFit(root)) {
+                // summaries first: they list each family's papers, and
+                // subdividing moves those papers down into the new children
+                describeBranches(root);
+                for (StrategyNode family : root.getChildren()) {
+                    subdivide(family, profile);
+                }
+            } else {
+                regroupFromPapers(root, profile);
+            }
         } else {
             // UC12 3a: the seeded roots stand, and the caller says why
             root.setMainIdea("");
@@ -248,14 +259,54 @@ public class ResearchConsultantAgent extends Agent {
         return root;
     }
 
+    /**
+     * The family most of a paper's tags point at.
+     *
+     * <p>This used to return the first tag that matched any family. Tags come
+     * back from {@code StrategyTaxonomy.match()} in taxonomy declaration order,
+     * so "first match" meant "whichever family is declared earliest" — and
+     * {@code Data-level approaches} is declared first. A pretraining paper
+     * tagged {@code synthetic data generation, transfer learning, fine-tuning}
+     * was filed under data because of the order of a map literal, not because
+     * of what the paper does.
+     *
+     * <p>A tie is broken in taxonomy order, which is what insertion order gives
+     * here. That is arbitrary too, but it is arbitrary <em>and</em> stable: the
+     * same papers must produce the same tree every time, or a researcher cannot
+     * tell a change in the literature from a change in the tool.
+     */
     private StrategyNode placementFor(StrategyNode root, PaperAnalysis paper) {
+        // classify() marks the tags uncertain when the taxonomy recognised
+        // nothing the model proposed. Measured live: an education paper whose
+        // method text said "curriculum" was tagged "curriculum learning" and
+        // filed under Training-level approaches, and the branch summary then
+        // wrote a rationale for it. The flag already existed and placement
+        // ignored it, so a guess was presented exactly like a match.
+        if (paper.isTagsUncertain()) {
+            StrategyNode unsure = root.find(StrategyTaxonomy.UNCLASSIFIED);
+            return unsure == null ? root : unsure;
+        }
+
+        Map<String, Integer> votes = new LinkedHashMap<>();
         for (String tag : paper.getStrategyTags()) {
             String family = taxonomy.familyOf(tag);
-            StrategyNode node = root.find(family);
-            if (node != null) {
-                return node;
+            if (family != null && root.find(family) != null) {
+                votes.merge(family, 1, Integer::sum);
             }
         }
+
+        String best = null;
+        int bestCount = 0;
+        for (Map.Entry<String, Integer> vote : votes.entrySet()) {
+            if (vote.getValue() > bestCount) {
+                best = vote.getKey();
+                bestCount = vote.getValue();
+            }
+        }
+        if (best != null) {
+            return root.find(best);
+        }
+
         StrategyNode unclassified = root.find(StrategyTaxonomy.UNCLASSIFIED);
         return unclassified == null ? root : unclassified;
     }
@@ -333,6 +384,233 @@ public class ResearchConsultantAgent extends Agent {
         } catch (Exception e) {
             // a malformed reply costs the summaries only
         }
+    }
+
+    /**
+     * Whether the built-in families are the right frame for this project.
+     *
+     * <p>The six top-level families are machine-learning intervention points.
+     * They describe one field well and every other field not at all, and a tree
+     * headed by {@code Data-level approaches} tells a reader that their field
+     * is organised that way. Pointed at education research, the taxonomy placed
+     * three papers of twelve — all three by accident, on the words "curriculum",
+     * "active learning" and "reinforcement" — and the other nine piled into
+     * {@code Unclassified}.
+     *
+     * <p>So the taxonomy is treated as a hypothesis about the field rather than
+     * a fact: it has to account for at least half the analysed papers to head
+     * the tree. Below that it is the wrong frame, and the structure comes from
+     * the papers instead. The threshold is deliberately blunt — a half is easy
+     * to explain to the researcher, and any finer rule would be a guess
+     * dressed up as a measurement.
+     *
+     * @return true when the named families hold at least half the papers
+     */
+    private boolean builtInFamiliesFit(StrategyNode root) {
+        int inNamedFamilies = 0;
+        for (StrategyNode child : root.getChildren()) {
+            if (!StrategyTaxonomy.UNCLASSIFIED.equals(child.getName())) {
+                inNamedFamilies += child.paperCount();
+            }
+        }
+        return inNamedFamilies * 2 >= root.paperCount();
+    }
+
+    /**
+     * Throws the built-in families away and lets the papers define the top
+     * level of the tree.
+     *
+     * <p>Used when {@link #builtInFamiliesFit} says the taxonomy does not
+     * describe this project. The model groups every analysed paper, so the
+     * branches are named in the field's own words and no machine-learning
+     * family appears at all.
+     *
+     * <p>If the grouping fails the papers stay on the root, flat. That is a
+     * worse tree than the one before this method ran, but it is an honest one:
+     * the alternative was six family names that had already been measured as
+     * not applying.
+     */
+    private void regroupFromPapers(StrategyNode root, ProjectProfile profile) {
+        List<PaperAnalysis> all = new ArrayList<>();
+        for (StrategyNode child : root.getChildren()) {
+            collectPapers(child, all);
+        }
+
+        List<StrategyNode> groups = proposeGroups("every paper analysed so far", all, profile);
+        if (groups.size() < 2) {
+            // nothing came back, so the tree is left exactly as the
+            // deterministic placement made it. The families are a poor frame
+            // for this project, but they are real information, and an
+            // unreachable model is no reason to throw them away — and UC12 5a
+            // still wants an explicit Unclassified node rather than papers
+            // sitting loose on the root
+            return;
+        }
+
+        for (StrategyNode child : root.getChildren()) {
+            root.remove(child);
+        }
+        root.setPapers(all);
+        applyGroups(root, all, groups);
+    }
+
+    private void collectPapers(StrategyNode node, List<PaperAnalysis> into) {
+        for (PaperAnalysis paper : node.getPapers()) {
+            if (!into.contains(paper)) {
+                into.add(paper);
+            }
+        }
+        for (StrategyNode child : node.getChildren()) {
+            collectPapers(child, into);
+        }
+    }
+
+    /**
+     * Asks the model to divide one family into sub-branches, and rebuilds that
+     * part of the tree from the answer.
+     *
+     * <p><strong>This is the adaptive half of F13.</strong> The six top-level
+     * families are a fixed vocabulary of machine-learning intervention points,
+     * which is useful inside the field they were written for and meaningless
+     * outside it — point the tool at education research and every paper lands
+     * in {@code Unclassified}. Stage 1 specified both halves ("the fixed
+     * top-level categories and all tree traversal are deterministic; proposing
+     * sub-branches, placing papers and writing branch summaries are AI") and
+     * only the deterministic half was built. This is the other half.
+     *
+     * <p>Papers are offered to the model by position, not by id. Ids here are
+     * 40-character Semantic Scholar hashes, and a model that has to echo one
+     * back can corrupt it in a way nothing downstream would catch; a small
+     * integer can be range-checked exactly.
+     *
+     * <p>Every failure leaves the family exactly as it was. A tree with no
+     * sub-branches is the tree this feature produced before today, so the
+     * degraded path is a known-good state rather than a broken one.
+     */
+    private void subdivide(StrategyNode family, ProjectProfile profile) {
+        List<PaperAnalysis> papers = new ArrayList<>(family.getPapers());
+        List<StrategyNode> groups = proposeGroups(family.getName(), papers, profile);
+        if (groups.size() < 2) {
+            // one group restates the family; none means the model declined
+            return;
+        }
+        applyGroups(family, papers, groups);
+    }
+
+    /**
+     * Asks the model how a set of papers divides, and keeps only what it is
+     * allowed to say.
+     *
+     * @param label what these papers have in common already, for the prompt
+     * @return the proposed sub-branches, each holding at least one paper;
+     *     empty whenever anything at all went wrong
+     */
+    private List<StrategyNode> proposeGroups(String label, List<PaperAnalysis> papers,
+            ProjectProfile profile) {
+        if (papers.size() < MIN_PAPERS_FOR_SUBBRANCHES) {
+            // two papers cannot support a division that is not invented
+            return List.of();
+        }
+
+        StringBuilder listing = new StringBuilder();
+        for (int i = 0; i < papers.size(); i++) {
+            PaperAnalysis p = papers.get(i);
+            listing.append(i + 1).append(". ").append(p.getPaper().getTitle())
+                    .append(" - ").append(p.getMethod()).append('\n');
+        }
+
+        try {
+            String reply = tools.callLLM("""
+                    These papers were all placed in the family "%s" of a solution
+                    landscape. The researcher's question is: %s
+
+                    %s
+                    Divide them into 2 to 5 sub-approaches describing how they differ
+                    from each other WITHIN this family. Name each one the way this
+                    field would name it. Return JSON only:
+                    {"groups":[{"name":"short name","idea":"one line","papers":[1,2]}]}
+                    Use only the numbers above, each at most once. If these papers do
+                    not divide meaningfully, return {"groups":[]}.
+                    """.formatted(label, profile.getResearchQuestion(), listing));
+            return readGroups(reply, papers);
+        } catch (LLMUnavailableException | RuntimeException e) {
+            // UC12 6a: the caller keeps whatever tree it already had
+            return List.of();
+        }
+    }
+
+    /** Hangs the proposed groups off {@code parent}, keeping every paper. */
+    private void applyGroups(StrategyNode parent, List<PaperAnalysis> papers,
+            List<StrategyNode> groups) {
+        List<PaperAnalysis> placed = new ArrayList<>();
+        for (StrategyNode group : groups) {
+            placed.addAll(group.getPapers());
+            parent.add(group);
+        }
+        if (StrategyTaxonomy.UNCLASSIFIED.equals(parent.getName())) {
+            // "Unclassified" was a statement about the built-in families, and
+            // it stopped being true the moment this node acquired named
+            // sub-branches: the papers are classified, just not by that
+            // vocabulary. UC12 5a asks that such papers are not forced into a
+            // family they do not belong to, which this still honours.
+            parent.setName("Outside the built-in families");
+        }
+        // whatever the model did not mention stays on the family itself rather
+        // than being dropped: losing a paper the researcher analysed is worse
+        // than an untidy branch
+        List<PaperAnalysis> leftover = new ArrayList<>();
+        for (PaperAnalysis paper : papers) {
+            if (!placed.contains(paper)) {
+                leftover.add(paper);
+            }
+        }
+        parent.setPapers(leftover);
+    }
+
+    /**
+     * Turns the model's reply into sub-branches, keeping only what it is
+     * allowed to say.
+     *
+     * @param papers the family's papers, indexed from 1 in the prompt
+     * @return the proposed sub-branches, each holding at least one paper
+     */
+    private List<StrategyNode> readGroups(String reply, List<PaperAnalysis> papers) {
+        List<StrategyNode> groups = new ArrayList<>();
+        Matcher json = Pattern.compile("\\{.*}", Pattern.DOTALL).matcher(reply);
+        if (!json.find()) {
+            return groups;
+        }
+
+        JsonNode parsed;
+        try {
+            parsed = MAPPER.readTree(json.group());
+        } catch (Exception e) {
+            return groups;
+        }
+
+        Set<Integer> taken = new LinkedHashSet<>();
+        for (JsonNode group : parsed.path("groups")) {
+            String name = group.path("name").asText("").strip();
+            if (name.isBlank()) {
+                continue;
+            }
+            StrategyNode node = new StrategyNode(name);
+            node.setMainIdea(group.path("idea").asText("").strip());
+
+            for (JsonNode number : group.path("papers")) {
+                int index = number.asInt(0);
+                // a number outside the listing, or one already used, is dropped
+                // rather than clamped: a wrong paper in a named group reads as
+                // a finding, and there is no way to tell it from a right one
+                if (index >= 1 && index <= papers.size() && taken.add(index)) {
+                    node.addPaper(papers.get(index - 1));
+                }
+            }
+            if (node.paperCount() > 0) {
+                groups.add(node);
+            }
+        }
+        return groups;
     }
 
     /**

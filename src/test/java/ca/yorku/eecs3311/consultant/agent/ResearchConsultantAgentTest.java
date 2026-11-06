@@ -333,4 +333,249 @@ class ResearchConsultantAgentTest {
         assertThrows(IllegalArgumentException.class, () -> agent.buildLandscape(List.of(), null));
         assertThrows(IllegalArgumentException.class, () -> agent.summarizeBranch(null));
     }
+
+    // --- F13: sub-branches proposed beneath the fixed families ---------------
+
+    /** Scripts the family-summary call first, then each subdivision call. */
+    private static StrategyNode landscapeScripted(String[] replies, PaperAnalysis... papers) {
+        ToolManager tools = new ToolManager(new FakeLLMClient().respondInOrder(replies));
+        return new ResearchConsultantAgent(tools).buildLandscape(List.of(papers), myProject());
+    }
+
+    private static final String NO_SUMMARIES = "{}";
+
+    @Test
+    void aFamilyWithEnoughPapersIsSplitIntoSubBranches() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"Balanced oversampling","idea":"rebalance the classes","papers":[1,2]},
+                  {"name":"Augmentation","idea":"transform what exists","papers":[3]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "data augmentation"));
+
+        StrategyNode family = root.find("Data-level approaches");
+        assertEquals(2, family.getChildren().size(), family.getChildren().toString());
+        assertEquals(2, family.find("Balanced oversampling").paperCount());
+        assertEquals(1, family.find("Augmentation").paperCount());
+        assertEquals("rebalance the classes", family.find("Balanced oversampling").getMainIdea());
+        assertEquals(3, root.paperCount(), "subdividing must not lose or duplicate a paper");
+    }
+
+    @Test
+    void aPaperTheModelLeavesOutStaysOnItsFamilyRatherThanVanishing() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"One","idea":"x","papers":[1]},
+                  {"name":"Two","idea":"y","papers":[2]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"));
+
+        StrategyNode family = root.find("Data-level approaches");
+        assertEquals(1, family.getPapers().size(),
+                "the unplaced paper must stay on the family, not disappear");
+        assertEquals(3, family.paperCount());
+        assertEquals(3, root.paperCount());
+    }
+
+    @Test
+    void aPaperNumberTheModelInventedIsIgnored() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"One","idea":"x","papers":[1,99]},
+                  {"name":"Two","idea":"y","papers":[2,-4]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"));
+
+        assertEquals(3, root.paperCount(), "an out-of-range number must not add a paper");
+        StrategyNode family = root.find("Data-level approaches");
+        assertEquals(1, family.find("One").paperCount());
+        assertEquals(1, family.find("Two").paperCount());
+    }
+
+    @Test
+    void aPaperIsNeverPlacedInTwoSubBranchesAtOnce() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"One","idea":"x","papers":[1,2]},
+                  {"name":"Two","idea":"y","papers":[2,3]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"));
+
+        assertEquals(3, root.paperCount(), "a paper claimed twice must still be counted once");
+    }
+
+    @Test
+    void oneProposedGroupIsNotASubdivision() {
+        // every paper in a single bucket says nothing the family did not
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[{"name":"Everything","idea":"x","papers":[1,2,3]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"));
+
+        StrategyNode family = root.find("Data-level approaches");
+        assertTrue(family.isLeaf(), "a single group must leave the family flat: "
+                + family.getChildren());
+        assertEquals(3, family.getPapers().size());
+    }
+
+    @Test
+    void aFamilyWithTooFewPapersIsLeftFlat() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"One","idea":"x","papers":[1]},
+                  {"name":"Two","idea":"y","papers":[2]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "diffusion model"));
+
+        assertTrue(root.find("Data-level approaches").isLeaf(),
+                "two papers cannot support sub-branches without inventing structure");
+    }
+
+    @Test
+    void anUnreadableSubdivisionLeavesTheFamilyFlatRatherThanBroken() {
+        StrategyNode root = landscapeScripted(
+                new String[] {NO_SUMMARIES, "I could not do that."},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"));
+
+        assertTrue(root.find("Data-level approaches").isLeaf());
+        assertEquals(3, root.paperCount());
+    }
+
+    @Test
+    void anUnavailableModelStillLeavesEveryPaperInAFamily() {
+        ToolManager tools = new ToolManager(new FakeLLMClient().failWith("no key"));
+        StrategyNode root = new ResearchConsultantAgent(tools).buildLandscape(
+                List.of(tagged("1", "resampling"), tagged("2", "resampling"),
+                        tagged("3", "resampling")),
+                myProject());
+
+        assertEquals(3, root.find("Data-level approaches").paperCount());
+        assertTrue(root.find("Data-level approaches").isLeaf());
+    }
+
+    // --- placement when a paper carries tags from several families -----------
+
+    @Test
+    void aPaperGoesToTheFamilyMostOfItsTagsPointAt() {
+        // "From Fake to Real" is a pretraining paper that also generates data;
+        // first-tag-wins filed it under Data-level because the taxonomy happens
+        // to declare that family first
+        StrategyNode root = landscape("{}",
+                tagged("1", "synthetic data generation", "transfer learning", "fine-tuning"));
+
+        assertEquals(1, root.find("Training-level approaches").paperCount(),
+                "two training tags outweigh one data tag: " + root.getChildren());
+    }
+
+    @Test
+    void anEvenSplitIsBrokenInTaxonomyOrderSoTheTreeIsReproducible() {
+        StrategyNode first = landscape("{}",
+                tagged("1", "data augmentation", "synthetic data generation",
+                        "generative model", "conditional generation"));
+        StrategyNode again = landscape("{}",
+                tagged("1", "data augmentation", "synthetic data generation",
+                        "generative model", "conditional generation"));
+
+        assertEquals(1, first.find("Data-level approaches").paperCount(),
+                "a tie goes to the family declared first: " + first.getChildren());
+        assertEquals(first.getChildren().toString(), again.getChildren().toString(),
+                "the same papers must give the same tree twice");
+    }
+
+    // --- when the built-in families are the wrong frame ----------------------
+
+    private static final String FIVE_GROUPS = """
+            {"groups":[
+              {"name":"Classroom comparisons","idea":"map teaching vs conventional","papers":[1,2]},
+              {"name":"Learner-built maps","idea":"students construct the map","papers":[3,4]},
+              {"name":"Map design","idea":"how map features change learning","papers":[5,6]}]}
+            """;
+
+    private static PaperAnalysis untagged(String id) {
+        PaperAnalysis a = new PaperAnalysis(
+                new PaperRecord(id, "Paper " + id, "Instructional Science", "2026-01-01"));
+        a.setMethod("method of " + id);
+        return a;
+    }
+
+    @Test
+    void whenAlmostNothingFitsTheBuiltInFamiliesTheyAreNotTheTopLevel() {
+        // one ML paper among six: the ML families are the wrong frame for this
+        // project, and showing Data-level as a peer of the real groups implies
+        // the field is organised that way
+        StrategyNode root = landscapeScripted(new String[] {FIVE_GROUPS},
+                tagged("1", "resampling"),
+                untagged("2"), untagged("3"), untagged("4"),
+                untagged("5"), untagged("6"));
+
+        assertEquals(null, root.find("Data-level approaches"),
+                "a family explaining one paper in six must not head the tree: "
+                        + root.getChildren());
+        assertEquals(null, root.find(StrategyTaxonomy.UNCLASSIFIED));
+        assertNotNull(root.find("Classroom comparisons"), root.getChildren().toString());
+        assertNotNull(root.find("Map design"), root.getChildren().toString());
+        assertEquals(6, root.paperCount(), "regrouping must not lose a paper");
+    }
+
+    @Test
+    void whenMostPapersFitTheBuiltInFamiliesAreKept() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, NO_SUMMARIES},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "data augmentation"), untagged("4"));
+
+        assertNotNull(root.find("Data-level approaches"),
+                "three of four papers fit, so the taxonomy is the right frame");
+        assertEquals(3, root.find("Data-level approaches").paperCount());
+    }
+
+    @Test
+    void aPaperWhoseTagsTheTaxonomyDoesNotStandBehindIsNotFiledUnderThem() {
+        // measured live: an education paper on "curriculum" was tagged
+        // "curriculum learning" and filed under Training-level approaches.
+        // classify() had already marked the tags uncertain; placement ignored it
+        PaperAnalysis guessed = tagged("1", "curriculum learning");
+        guessed.setTagsUncertain(true);
+
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, NO_SUMMARIES},
+                guessed, tagged("2", "resampling"), tagged("3", "resampling"),
+                tagged("4", "resampling"));
+
+        assertEquals(1, root.find(StrategyTaxonomy.UNCLASSIFIED).paperCount(),
+                "an uncertain tag is not evidence of a family: " + root.getChildren());
+        assertEquals(3, root.find("Data-level approaches").paperCount());
+    }
+
+    @Test
+    void theUnclassifiedNodeIsRenamedOnceItHasStructureOfItsOwn() {
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, """
+                {"groups":[
+                  {"name":"One","idea":"x","papers":[1]},
+                  {"name":"Two","idea":"y","papers":[2,3]}]}
+                """},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"), tagged("4", "data augmentation"),
+                untagged("5"), untagged("6"), untagged("7"));
+
+        assertEquals(null, root.find(StrategyTaxonomy.UNCLASSIFIED),
+                "a node with named sub-branches is not unclassified any more: "
+                        + root.getChildren());
+        assertEquals(3, root.find("Outside the built-in families").paperCount());
+    }
+
+    @Test
+    void anUnclassifiedNodeThatStaysFlatKeepsItsName() {
+        // UC12 5a: still an explicit Unclassified node, not a forced placement
+        StrategyNode root = landscapeScripted(new String[] {NO_SUMMARIES, "{\"groups\":[]}"},
+                tagged("1", "resampling"), tagged("2", "resampling"),
+                tagged("3", "resampling"), untagged("4"), untagged("5"), untagged("6"));
+
+        assertNotNull(root.find(StrategyTaxonomy.UNCLASSIFIED), root.getChildren().toString());
+    }
 }

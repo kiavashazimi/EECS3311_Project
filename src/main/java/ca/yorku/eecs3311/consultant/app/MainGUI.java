@@ -17,7 +17,9 @@ import java.util.ArrayList;
 import java.util.List;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.control.ScrollPane;
 import javafx.scene.control.TextArea;
@@ -63,6 +65,7 @@ public class MainGUI {
     private final Button whatChanged = new Button("What changed");
     private final Button strategies = new Button("Strategies");
     private final Button digestButton = new Button("Digest");
+    private final Button newProject = new Button("New project");
     private final TreeView<StrategyNode> tree = new TreeView<>();
     private final TextField consultQuery = new TextField();
     private final Button askButton = new Button("Ask");
@@ -118,7 +121,7 @@ public class MainGUI {
         });
         tree.getSelectionModel().selectedItemProperty().addListener((obs, before, after) -> {
             if (after != null) {
-                detail.setText(controller.describeBranch(after.getValue()));
+                detail.setText(describeSelectedBranch(after.getValue()));
             }
         });
         feed.onSelectionChanged(this::refreshButtons);
@@ -152,19 +155,20 @@ public class MainGUI {
 
         int row = 0;
         grid.addRow(row++, new Label("Research question *"), question);
-        grid.addRow(row++, new Label("Datasets *"), datasets);
-        grid.addRow(row++, new Label("Metrics *"), metrics);
+        grid.addRow(row++, new Label("Datasets"), datasets);
+        grid.addRow(row++, new Label("Metrics"), metrics);
         grid.addRow(row++, new Label("Models"), models);
         grid.addRow(row++, new Label("Your results so far"), results);
 
         Button save = new Button("Save project");
         save.setDefaultButton(true);
         save.setOnAction(e -> save());
+        newProject.setOnAction(e -> startNewProject());
 
         status.setWrapText(true);
         grid.add(new HBox(12, save, discover, analyze, compare, checkCode), 1, row++);
-        grid.add(new HBox(12, importProject, whatChanged, strategies, digestButton, status),
-                1, row++);
+        grid.add(new HBox(12, importProject, whatChanged, strategies, digestButton,
+                newProject, status), 1, row++);
 
         consultQuery.setPromptText(
                 "ask about your project, or describe an idea to look for prior work");
@@ -214,8 +218,18 @@ public class MainGUI {
 
         try {
             ProjectProfile saved = controller.saveProfile(p);
-            status.setStyle("-fx-text-fill: #1e8449;");
-            status.setText("Saved.");
+            List<String> thin = saved.recommendedFieldsMissing();
+            if (thin.isEmpty()) {
+                status.setStyle("-fx-text-fill: #1e8449;");
+                status.setText("Saved.");
+            } else {
+                // saved, but the researcher should know what it costs rather
+                // than discovering it as a silently worse search later
+                status.setStyle("-fx-text-fill: #b9770e;");
+                status.setText("Saved without " + String.join(" or ", thin)
+                        + " - discovery will search on your question alone, and"
+                        + " comparability can only say \"cannot determine\".");
+            }
             showProfile(saved);
         } catch (ValidationException e) {
             // SD01: inline error, nothing persisted
@@ -226,6 +240,45 @@ public class MainGUI {
             status.setStyle("-fx-text-fill: #c0392b;");
             status.setText("Could not write the project file. Your previous project is intact.");
         }
+    }
+
+    /**
+     * Discards the project after an explicit confirmation.
+     *
+     * <p>The dialog names what will be lost — a count of analyses, not just
+     * "are you sure" — because the solution landscape is built from those
+     * analyses and the researcher may not connect the two.
+     */
+    private void startNewProject() {
+        int analyses = controller.getAnalyses().size();
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Discard this project and start over?\n\n"
+                        + "This deletes your profile and all " + analyses
+                        + " analysed paper(s), including the solution landscape built"
+                        + " from them. It cannot be undone.",
+                ButtonType.CANCEL, ButtonType.OK);
+        confirm.setTitle("New project");
+        confirm.setHeaderText(null);
+
+        if (confirm.showAndWait().orElse(ButtonType.CANCEL) != ButtonType.OK) {
+            return;
+        }
+
+        try {
+            controller.startNewProject();
+        } catch (StorageException e) {
+            status.setStyle("-fx-text-fill: #c0392b;");
+            status.setText(e.getMessage());
+            return;
+        }
+        showProfile(controller.getProfile());
+        feed.showRanked(List.of());
+        tree.setRoot(null);
+        tree.setManaged(false);
+        tree.setVisible(false);
+        detail.clear();
+        status.setStyle("-fx-text-fill: #1e8449;");
+        status.setText("New project. Describe it above and save.");
     }
 
     /**
@@ -433,21 +486,41 @@ public class MainGUI {
         detail.setText("Building the solution landscape...");
 
         Thread worker = new Thread(() -> {
-            StrategyNode root = controller.buildSolutionLandscape();
-            boolean tooFew = controller.tooFewPapersForLandscape();
+            StrategyNode root;
+            boolean tooFew;
+            try {
+                root = controller.buildSolutionLandscape();
+                tooFew = controller.tooFewPapersForLandscape();
+            } catch (RuntimeException e) {
+                // without this the button stayed disabled with no message, and
+                // the only way back was to restart the application
+                Platform.runLater(() -> {
+                    strategies.setDisable(false);
+                    detail.setText("The solution landscape could not be built: " + e);
+                });
+                return;
+            }
+            final StrategyNode built = root;
+            final boolean few = tooFew;
             Platform.runLater(() -> {
                 strategies.setDisable(false);
-                if (root.paperCount() == 0) {
+                if (built.paperCount() == 0) {
                     tree.setManaged(false);
                     tree.setVisible(false);
                     detail.setText("Nothing to map yet. Analyse a paper first.");
                     return;
                 }
-                tree.setRoot(asTreeItem(root));
+                tree.setRoot(asTreeItem(built));
                 tree.setManaged(true);
                 tree.setVisible(true);
-                detail.setText(root.paperCount() + " analysed paper(s)."
-                        + (tooFew
+                // the branches come from the analyses, not from the research
+                // question, and nothing said so: after switching to a new
+                // question the tree still showed the previous project's
+                // families and looked like it had ignored the change
+                detail.setText("Solution landscape - built from your "
+                        + built.paperCount() + " analysed paper(s), not from your"
+                        + " research question."
+                        + (few
                                 ? "\n\nToo few papers for branch summaries - the seeded "
                                         + "families are shown as they are."
                                 : "\n\nSelect a branch to see what it covers."));
@@ -455,6 +528,29 @@ public class MainGUI {
         }, "build-landscape");
         worker.setDaemon(true);
         worker.start();
+    }
+
+    /**
+     * A branch's summary followed by the papers sitting directly on it.
+     *
+     * <p>F13 in {@code docs/STAGE1.md} says the right-hand pane shows "the
+     * selected branch's main idea, its sibling contrast and its papers"; only
+     * the CLI did. The gap became visible once sub-branches existed: a node
+     * reading {@code [9]} with children holding 3, 3 and 2 had a ninth paper
+     * the model had not grouped, and nothing on screen could show it — the
+     * tree renders branches only.
+     */
+    private String describeSelectedBranch(StrategyNode node) {
+        StringBuilder b = new StringBuilder(controller.describeBranch(node));
+        List<PaperAnalysis> own = node.getPapers();
+        if (own.isEmpty()) {
+            return b.toString();
+        }
+        b.append(node.isLeaf() ? "\n\nPapers" : "\n\nPapers not in any sub-branch");
+        for (PaperAnalysis paper : own) {
+            b.append("\n  - ").append(paper.getPaper().getTitle());
+        }
+        return b.toString();
     }
 
     /** Recurses to any depth with no test for leaf versus branch. */
