@@ -804,22 +804,22 @@ public class Cli {
                   import <directory>        read your own project's current state
                   changes                   what changed in your project since last import
                   repo <paper>              does the paper's code exist and look reusable
-  ask "<question>"          answer a question from your stored project data
-  prior "<idea>"            has anyone tried this? searches papers and memory
-  digest                    new papers and project changes since the last digest
-
-<paper> is either the arXiv id (2412.20374v2) or the row number from
-the last 'rc discover' listing (2).
+                  ask "<question>"          answer a question from your stored project data
+                  prior "<idea>"            has anyone tried this? searches papers and memory
+                  digest                    new papers and project changes since the last digest
                   landscape                 the space of solution approaches, and where
                                             your own approach sits in it
                   where                     print the file the project is stored in
                   reset --confirm           discard the whole project and start over
                   help                      this message
 
+                <paper> is either the arXiv id (2412.20374v2) or the row number
+                from the last 'rc discover' listing (2).
+
                 profile set options
-                  --question "..."          the research question          (required)
-                  --datasets "a, b"         datasets used               (recommended)
-                  --metrics  "a, b"         metrics reported            (recommended)
+                  --question "..."          the research question     (required)
+                  --datasets "a, b"         datasets used          (recommended)
+                  --metrics  "a, b"         metrics reported       (recommended)
                   --models   "a, b"         models used
                   --results  "a, b"         your own results so far
 
