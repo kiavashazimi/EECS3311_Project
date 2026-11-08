@@ -1,0 +1,187 @@
+classDiagram
+    direction TB
+
+    %% =====================================================================
+    %% Stage 2 as-built, view 2 of 3: services behind ToolManager.
+    %% Strategy (LiteratureSource), Adapter (LLMClient and
+    %% ProjectContextProvider), the deterministic analysis services, and
+    %% the checked exceptions that force every degraded path.
+    %% =====================================================================
+
+    class ToolManager {
+        -llm: LLMClient
+        -literatureSource: LiteratureSource
+        -fallbackLiteratureSource: LiteratureSource
+        -parser: PaperParser
+        -github: GitHubClient
+        +callLLM(prompt: String) String
+        +search(query: String, intent: SearchIntent) List~PaperRecord~
+        +findPaper(id: String) Optional~PaperRecord~
+        +parsePaper(p: PaperRecord) String
+        +fetchRepo(url: String) RepoMetadata
+        +setLiteratureSource(s: LiteratureSource)
+        +setFallbackLiteratureSource(s: LiteratureSource)
+    }
+    note for ToolManager "Continued from view 1 - the agents reach<br/>every service only through this class."
+
+    %% ---------- Strategy: literature sources ----------
+    class LiteratureSource {
+        <<interface>>
+        +search(query: String) List~PaperRecord~
+        +search(query: String, intent: SearchIntent)* List~PaperRecord~
+        +findById(id: String)* Optional~PaperRecord~
+        +name()* String
+    }
+    class ArxivSource {
+        -fetcher: FeedFetcher
+        -maxResults: int
+        +search(query: String, intent: SearchIntent) List~PaperRecord~
+        +findById(id: String) Optional~PaperRecord~
+        +name() String
+    }
+    class SemanticScholarSource {
+        -fetcher: JsonFetcher
+        -apiKey: String
+        -retries: int
+        -backoffMillis: long
+        -minIntervalMillis: long
+        -delayer: Delayer
+        +search(query: String, intent: SearchIntent) List~PaperRecord~
+        +findById(id: String) Optional~PaperRecord~
+        +name() String
+    }
+    class SearchIntent {
+        <<enumeration>>
+        MOST_RELEVANT
+        NEWEST
+        +arxivSortKey() String
+    }
+    class QueryTerms {
+        +split(query: String) List~String~$
+        +dropLastTerm(query: String) String$
+        +count(query: String) int$
+    }
+    LiteratureSource <|.. ArxivSource
+    LiteratureSource <|.. SemanticScholarSource
+    ToolManager "1" --> "2" LiteratureSource : primary and fallback
+    ToolManager ..> QueryTerms : widens a failed query
+    LiteratureSource ..> SearchIntent : ordered by
+    LiteratureSource ..> LiteratureUnavailableException : throws
+
+    %% ---------- Adapter: the model ----------
+    class LLMClient {
+        <<interface>>
+        +generate(prompt: String)* String
+    }
+    class ClaudeClient {
+        -config: Config
+        -maxTokens: long
+        -sdk: AnthropicClient
+        +generate(prompt: String) String
+    }
+    class Config {
+        -values: Map~String, String~
+        +load() Config$
+        +hasLlmApiKey() boolean
+        +llmApiKey() String
+        +llmModel() String
+        +llmBaseUrl() String
+        +dataDir() Path
+    }
+    LLMClient <|.. ClaudeClient
+    ToolManager "1" --> "1" LLMClient
+    ClaudeClient "1" --> "1" Config
+    LLMClient ..> LLMUnavailableException : throws
+
+    %% ---------- Adapter: project context ----------
+    class ProjectContextProvider {
+        <<interface>>
+        +isAvailable(path: Path)* boolean
+        +scan(path: Path)* ContextSnapshot
+        +name()* String
+    }
+    class FileBasedContextProvider {
+        +isAvailable(path: Path) boolean
+        +scan(path: Path) ContextSnapshot
+        +name() String
+    }
+    class ClaudeCodeContextProvider {
+        +isAvailable(path: Path) boolean
+        +scan(path: Path) ContextSnapshot
+        +name() String
+    }
+    ProjectContextProvider <|.. FileBasedContextProvider
+    ProjectContextProvider <|.. ClaudeCodeContextProvider
+    ProjectContextProvider ..> ContextSnapshot : returns
+
+    %% ---------- Repository metadata ----------
+    class GitHubClient {
+        -fetcher: ApiFetcher
+        +fetchRepo(url: String) RepoMetadata
+    }
+    ToolManager "1" *-- "1" GitHubClient
+    GitHubClient ..> RepoMetadata : returns
+    GitHubClient ..> RepositoryUnavailableException : throws
+
+    %% ---------- Deterministic analysis services ----------
+    class PaperParser {
+        +parse(p: PaperRecord) String
+    }
+    class ComparabilityChecker {
+        +isComparable(a: PaperAnalysis, p: ProjectProfile) Comparability
+        +findMismatches(a: PaperAnalysis, p: ProjectProfile) List~String~
+        +explain(a: PaperAnalysis, p: ProjectProfile) String
+    }
+    class EvidenceRetriever {
+        +relevantTo(query: String, stored: List~PaperAnalysis~) List~PaperAnalysis~
+        +papersRelevantTo(query: String, found: List~PaperRecord~) List~PaperRecord~
+        +termsOf(query: String) List~String~
+    }
+    class StrategyTaxonomy {
+        +UNCLASSIFIED: String$
+        -known: Map~String, List~String~~
+        -root: StrategyNode
+        +match(method: String) List~String~
+        +isKnown(tag: String) boolean
+        +canonical(tag: String) String
+        +addKnownStrategy(tag: String, variants: String[])
+        +getKnownStrategies() List~String~
+        +seedRoots() StrategyNode
+        +getRoot() StrategyNode
+        +familyOf(tag: String) String
+        +getFamilies() List~String~
+    }
+    ToolManager "1" *-- "1" PaperParser
+    PaperParser ..> UnparseablePaperException : throws
+    ComparabilityChecker ..> Comparability : returns
+    StrategyTaxonomy "1" *-- "1" StrategyNode : seeded root
+
+    %% ---------- Checked exceptions ----------
+    class AgentException {
+        <<exception>>
+    }
+    class ValidationException {
+        <<exception>>
+        -fields: List~String~
+        +getFields() List~String~
+    }
+    class StorageException {
+        <<exception>>
+    }
+    class LLMUnavailableException {
+        <<exception>>
+    }
+    class LiteratureUnavailableException {
+        <<exception>>
+    }
+    class RepositoryUnavailableException {
+        <<exception>>
+    }
+    class UnparseablePaperException {
+        <<exception>>
+    }
+
+    note for LiteratureSource "Strategy - two live sources. One is chosen at<br/>startup from Config and ToolManager swaps to<br/>the other at runtime when the first fails.<br/>findById is deliberately not a default method."
+    note for LLMClient "Adapter - wraps the Anthropic SDK behind the<br/>single method the agents call, so every agent<br/>is testable against a fake."
+    note for ProjectContextProvider "Adapter - two sources of project context.<br/>isAvailable() probes at runtime, so the choice<br/>is a decision, not a hardcoded preference."
+    note for AgentException "Every service failure is a checked exception,<br/>so each caller is forced to write the degraded<br/>path the use cases specify rather than crash."

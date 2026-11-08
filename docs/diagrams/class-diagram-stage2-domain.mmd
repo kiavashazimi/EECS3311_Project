@@ -1,0 +1,164 @@
+classDiagram
+    direction TB
+
+    %% =====================================================================
+    %% Stage 2 as-built, view 3 of 3: the domain model.
+    %% Composite (StrategyNode) plus the data carried between agents.
+    %% Getters, setters and equals/hashCode are omitted throughout.
+    %% =====================================================================
+
+    %% ---------- Composite ----------
+    class StrategyNode {
+        -name: String
+        -mainIdea: String
+        -ownApproach: boolean
+        -children: List~StrategyNode~
+        -papers: List~PaperAnalysis~
+        +add(child: StrategyNode) StrategyNode
+        +remove(child: StrategyNode) boolean
+        +getChildren() List~StrategyNode~
+        +isLeaf() boolean
+        +paperCount() int
+        +contains(n: StrategyNode) boolean
+        +flatten() List~StrategyNode~
+        +find(name: String) StrategyNode
+        +pruneEmptyBranches()
+        +addPaper(p: PaperAnalysis)
+        +isMainIdeaMissing() boolean
+    }
+    StrategyNode "1" o-- "0..*" StrategyNode : children
+    StrategyNode "1" o-- "0..*" PaperAnalysis
+
+    %% ---------- The project ----------
+    class ProjectProfile {
+        -researchQuestion: String
+        -datasets: List~String~
+        -models: List~String~
+        -metrics: List~String~
+        -ownResults: List~String~
+        +missingFields() List~String~
+        +recommendedFieldsMissing() List~String~
+        +isComplete() boolean
+        +isFullyDescribed() boolean
+        +usesMetric(m: String) boolean
+        +usesDataset(d: String) boolean
+        +describesSameProjectAs(other: ProjectProfile) boolean
+    }
+    class ContextSnapshot {
+        -scannedAt: String
+        -projectPath: String
+        -providerName: String
+        -recentCommits: List~String~
+        -configEntries: Map~String, String~
+        -resultFiles: List~String~
+        -agentDescription: String
+        +changesSince(older: ContextSnapshot) List~String~
+        +isEmpty() boolean
+    }
+
+    %% ---------- Papers ----------
+    class PaperRecord {
+        -id: String
+        -title: String
+        -venue: String
+        -date: String
+        -summary: String
+        -url: String
+        -repoUrl: String
+        +hasRepository() boolean
+    }
+    class RankedPaper {
+        <<record>>
+        +paper: PaperRecord
+        +score: int
+        +why: String
+        +closestPriorWork: boolean
+        +unranked(p: PaperRecord) RankedPaper$
+        +isUnranked() boolean
+    }
+    class PaperAnalysis {
+        -paper: PaperRecord
+        -problem: String
+        -method: String
+        -dataset: String
+        -model: String
+        -metrics: List~String~
+        -results: String
+        -limitations: String
+        -strategyTags: List~String~
+        -tagsUncertain: boolean
+        +isUnknown(value: String) boolean$
+        +unknownFields() List~String~
+        +isComplete() boolean
+        +reportsMetric(m: String) boolean
+        +addStrategyTag(tag: String)
+    }
+    PaperAnalysis "1" --> "1" PaperRecord
+    RankedPaper "1" --> "1" PaperRecord
+
+    %% ---------- Results produced by the agents ----------
+    class ComparisonResult {
+        -paperTitle: String
+        -similarities: List~String~
+        -differences: List~String~
+        -comparability: Comparability
+        -mismatches: List~String~
+        -comparabilityNote: String
+        -narrative: String
+        +isNarrativeMissing() boolean
+    }
+    class Comparability {
+        <<enumeration>>
+        COMPARABLE
+        NOT_COMPARABLE
+        CANNOT_DETERMINE
+        +isComparable() boolean
+        +label() String
+    }
+    class RepoMetadata {
+        -url: String
+        -hasReadme: boolean
+        -license: String
+        -topLevelFiles: List~String~
+        +hasTopLevelEntry(name: String) boolean
+        +hasLicense() boolean
+    }
+    class RepoSummary {
+        -url: String
+        -codeAvailable: boolean
+        -readmeQuality: String
+        -license: String
+        -hasDatasets: boolean
+        -hasEvalScripts: boolean
+        -note: String
+        +unavailable(url: String, reason: String) RepoSummary$
+        +isReproducible() boolean
+    }
+    class Digest {
+        -generatedAt: String
+        -newPapers: List~PaperRecord~
+        -projectChanges: String
+        -strategyHighlights: List~String~
+        -summaryText: String
+        +isEmpty() boolean
+        +isSummaryMissing() boolean
+        +addPaper(p: PaperRecord)
+    }
+    class Answer {
+        -question: String
+        -text: String
+        -sources: List~String~
+        -grounded: boolean
+        -note: String
+        +isGrounded() boolean
+        +isTextMissing() boolean
+        +addSource(s: String)
+    }
+    ComparisonResult "1" --> "1" Comparability
+    Digest "1" o-- "0..*" PaperRecord
+    RepoSummary ..> RepoMetadata : derived from
+
+    note for StrategyNode "Composite - a node with no children is a leaf,<br/>so one recursive walk handles the family,<br/>sub-branch and paper levels alike."
+    note for PaperAnalysis "Every text field defaults to UNKNOWN rather<br/>than null, so a partial analysis is a valid<br/>object and unknownFields() names the gaps."
+    note for Comparability "Three states, not a boolean. CANNOT_DETERMINE<br/>is what F07 reports when a field needed for<br/>the decision is unknown on either side."
+    note for Answer "grounded says whether the text came from<br/>stored evidence. An ungrounded answer is<br/>still shown, but labelled."

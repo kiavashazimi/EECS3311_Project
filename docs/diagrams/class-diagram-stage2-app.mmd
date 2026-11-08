@@ -1,0 +1,185 @@
+classDiagram
+    direction TB
+
+    %% =====================================================================
+    %% Stage 2 as-built, view 1 of 4: clients, Facade, Observer, Singleton.
+    %% The agents are in view 2, the services they call in view 3, and the
+    %% data they pass around in view 4.
+    %% =====================================================================
+
+    %% ---------- Boundary and startup ----------
+    class App {
+        +start(stage: Stage)
+        +main(args: String[])$
+    }
+    class MainGUI {
+        -controller: AppController
+        -feed: PaperFeedPanel
+        -tree: TreeView~StrategyNode~
+        -savedProfile: ProjectProfile
+        +build() BorderPane
+        -formProfile() ProjectProfile
+        -discoverPapers()
+        -analyzeSelected()
+        -consult(mode: Mode)
+        -showLandscape()
+        -describeSelectedBranch(n: StrategyNode) String
+    }
+    class Cli {
+        -controller: AppController
+        -out: PrintStream
+        -err: PrintStream
+        +run(args: String[]) int
+        +main(args: String[])$
+    }
+    class Bootstrap {
+        +application() AppController$
+        +application(c: Config) AppController$
+        +literatureSourceName(c: Config) String$
+        +fallbackSourceName(c: Config) String$
+    }
+    class Config {
+        -values: Map~String, String~
+        +load() Config$
+        +hasLlmApiKey() boolean
+        +hasSemanticScholarKey() boolean
+        +llmModel() String
+        +dataDir() Path
+    }
+    App "1" *-- "1" MainGUI
+    MainGUI "1" *-- "1" PaperFeedPanel
+    App ..> Bootstrap
+    Cli ..> Bootstrap
+    Bootstrap ..> Config : reads
+    Bootstrap ..> AppController : assembles
+
+    %% ---------- Facade ----------
+    class AppController {
+        -memory: ProjectMemory
+        -tools: ToolManager
+        -store: MemoryStore
+        -discovery: PaperDiscoveryAgent
+        -analysis: PaperAnalysisAgent
+        -consultant: ResearchConsultantAgent
+        -context: ProjectContextAgent
+        -repository: RepositoryAnalysisAgent
+        -answering: GroundedAnswerAgent
+        -digestBuilder: DigestBuilder
+        +saveProfile(p: ProjectProfile) ProjectProfile
+        +importProjectContext(path: String) ImportedContext
+        +discoverPapers() List~RankedPaper~
+        +analyzePaper(p: PaperRecord) PaperAnalysis
+        +analyzePaperById(id: String) PaperAnalysis
+        +classifyPaper(a: PaperAnalysis) List~String~
+        +comparePaper(a: PaperAnalysis) ComparisonResult
+        +searchPriorWork(idea: String) Answer
+        +checkRepository(a: PaperAnalysis) RepoSummary
+        +summarizeProjectChanges() String
+        +ask(question: String) Answer
+        +buildDigest() Digest
+        +buildSolutionLandscape() StrategyNode
+        +describeBranch(n: StrategyNode) String
+        +loadStoredProject() boolean
+        +startNewProject()
+    }
+    MainGUI "1" --> "1" AppController
+    Cli "1" --> "1" AppController
+    AppController "1" o-- "6" Agent : view 2
+    AppController "1" *-- "1" DigestBuilder
+    AppController "1" --> "1" ToolManager : view 3
+    AppController "1" --> "1" ProjectMemory
+    AppController "1" --> "1" MemoryStore
+    AppController ..> ValidationException : throws
+    AppController ..> StorageException : throws
+
+    %% ---------- Observer ----------
+    class PaperFeedListener {
+        <<interface>>
+        +onNewPaper(p: PaperRecord)*
+    }
+    class PaperFeedPanel {
+        -rows: ObservableList~String~
+        -ranked: List~RankedPaper~
+        -stale: boolean
+        +node() VBox
+        +onNewPaper(p: PaperRecord)
+        +showRanked(papers: List~RankedPaper~)
+        +showSearching()
+        +showError(message: String)
+        +markStale()
+        +staleHeading(current: String) String$
+        +selectedPaper() Optional~PaperRecord~
+    }
+    class DigestBuilder {
+        -tools: ToolManager
+        -memory: ProjectMemory
+        +onNewPaper(p: PaperRecord)
+        +pendingCount() int
+        +buildDigest() Digest
+    }
+    PaperFeedListener <|.. PaperFeedPanel
+    PaperFeedListener <|.. DigestBuilder
+    PaperDiscoveryAgent "1" --> "0..*" PaperFeedListener : broadcasts
+    DigestBuilder "1" --> "1" ProjectMemory
+
+    %% ---------- Singleton and persistence ----------
+    class ProjectMemory {
+        <<Singleton>>
+        -profile: ProjectProfile
+        -papers: List~PaperAnalysis~
+        -lastSnapshot: ContextSnapshot
+        -lastListing: List~String~
+        -digestPending: List~PaperRecord~
+        -lastDigestAt: String
+        +getInstance() ProjectMemory$
+        +saveProfile(p: ProjectProfile)
+        +getProfile() ProjectProfile
+        +addPaperAnalysis(a: PaperAnalysis)
+        +getPaperAnalyses() List~PaperAnalysis~
+        +findAnalysis(id: String) Optional~PaperAnalysis~
+        +saveSnapshot(s: ContextSnapshot)
+        +getLastSnapshot() ContextSnapshot
+        +saveLastListing(ids: List~String~)
+        +addDigestPaper(p: PaperRecord)
+        +clearDigestPending()
+        +clear()
+    }
+    class MemoryStore {
+        -directory: Path
+        -mapper: ObjectMapper
+        +defaultDirectory(override: String) Path$
+        +getFile() Path
+        +exists() boolean
+        +save(m: ProjectMemory)
+        +load(m: ProjectMemory) boolean
+    }
+    class MemoryState {
+        -profile: ProjectProfile
+        -papers: List~PaperAnalysis~
+        -lastListing: List~String~
+        -digestPending: List~PaperRecord~
+        -lastDigestAt: String
+        -lastSnapshot: ContextSnapshot
+    }
+    MemoryStore ..> MemoryState : serialises through
+    MemoryStore ..> ProjectMemory : loads and saves
+
+    %% ---------- Referenced here, detailed in other views ----------
+    class Agent {
+        <<abstract>>
+    }
+    class PaperDiscoveryAgent
+    class ToolManager
+    class ValidationException {
+        <<exception>>
+        -fields: List~String~
+        +getFields() List~String~
+    }
+    class StorageException {
+        <<exception>>
+    }
+    Agent <|-- PaperDiscoveryAgent
+
+    note for AppController "Facade - 15 methods cover F01-F13, plus<br/>startNewProject() for project lifecycle.<br/>F07 has no method of its own, it runs inside<br/>comparePaper() - UC05 includes UC06.<br/>Neither client touches an agent directly."
+    note for PaperFeedListener "Observer - PaperDiscoveryAgent broadcasts each<br/>paper as it is found. The GUI panel redraws and<br/>the digest accumulates, independently, and a<br/>listener that throws is isolated and skipped."
+    note for ProjectMemory "Singleton - one shared project state for every<br/>agent, the GUI and the CLI. MemoryStore writes<br/>it to disk through the MemoryState DTO, so the<br/>Singleton itself stays free of Jackson."

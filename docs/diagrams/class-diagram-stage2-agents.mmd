@@ -1,0 +1,150 @@
+classDiagram
+    direction TB
+
+    %% =====================================================================
+    %% Stage 2 as-built, view 2 of 4: the agents (Template Method).
+    %% run() is final on Agent and fixes the order plan, executeTools,
+    %% summarize. Every subclass overrides exactly those three protected
+    %% hooks, so the overrides are not repeated in each box.
+    %% =====================================================================
+
+    class Agent {
+        <<abstract>>
+        #tools: ToolManager
+        -lastPlan: Plan
+        +run(input: Object) Object
+        +getLastPlan() Plan
+        #plan(input: Object)* Plan
+        #executeTools(plan: Plan)* Object
+        #summarize(result: Object)* Object
+    }
+    class Plan {
+        -steps: List~String~
+        -toolCalls: List~String~
+        +addStep(s: String) Plan
+        +addToolCall(t: String) Plan
+        +getSteps() List~String~
+        +getToolCalls() List~String~
+        +isEmpty() boolean
+    }
+    class AgentException {
+        <<exception>>
+    }
+    Agent ..> Plan : creates and records
+    Agent ..> AgentException : throws
+    Agent "0..*" --> "1" ToolManager
+
+    %% ---------- F03: discovery, and the Observer subject ----------
+    class PaperDiscoveryAgent {
+        -listeners: List~PaperFeedListener~
+        -profile: ProjectProfile
+        -rankingFailure: String
+        +addListener(l: PaperFeedListener)
+        +removeListener(l: PaperFeedListener)
+        +notifyListeners(p: PaperRecord)
+        +getRankingFailure() String
+    }
+
+    %% ---------- F04, F05: analysis and classification ----------
+    class PaperAnalysisAgent {
+        -taxonomy: StrategyTaxonomy
+        -pending: PaperRecord
+        +classifyExisting(a: PaperAnalysis) List~String~
+        +getTaxonomy() StrategyTaxonomy
+    }
+
+    %% ---------- F06, F07, F13: comparison and the landscape ----------
+    class ResearchConsultantAgent {
+        -checker: ComparabilityChecker
+        -taxonomy: StrategyTaxonomy
+        -pending: Comparison
+        +compare(a: PaperAnalysis, p: ProjectProfile) ComparisonResult
+        +buildLandscape(items: List~PaperAnalysis~, p: ProjectProfile) StrategyNode
+        +summarizeBranch(n: StrategyNode) String
+        +mismatchesFor(a: PaperAnalysis, p: ProjectProfile) List~String~
+        +getChecker() ComparabilityChecker
+        +linesUp(r: ComparisonResult) boolean$
+        +tooFewPapersForBranchSummaries(count: int) boolean$
+        -markOwnApproach(root: StrategyNode, p: ProjectProfile)
+        -placementFor(paper: PaperAnalysis, root: StrategyNode) StrategyNode
+        -builtInFamiliesFit(root: StrategyNode) boolean
+        -regroupFromPapers(root: StrategyNode, p: ProjectProfile)
+        -subdivide(family: StrategyNode, p: ProjectProfile)
+        -proposeGroups(label: String, papers: List~PaperAnalysis~, p: ProjectProfile) Map
+        -applyGroups(parent: StrategyNode, papers: List~PaperAnalysis~, groups: Map)
+    }
+
+    %% ---------- F02, F10: project context ----------
+    class ProjectContextAgent {
+        -providers: List~ProjectContextProvider~
+        -pending: Path
+        -previous: ContextSnapshot
+        +selectProvider(path: Path) ProjectContextProvider
+        +changesBetween(older: ContextSnapshot, cur: ContextSnapshot) List~String~
+        +summarizeChanges(older: ContextSnapshot, cur: ContextSnapshot) String
+    }
+    class ImportedContext {
+        <<record>>
+        +snapshot: ContextSnapshot
+        +summary: String
+        +isSummaryMissing() boolean
+    }
+
+    %% ---------- F09: repository metadata ----------
+    class RepositoryAnalysisAgent {
+        -pending: PaperAnalysis
+        +checkRepository(a: PaperAnalysis) RepoSummary
+    }
+
+    %% ---------- F08, F11: grounded answering ----------
+    class GroundedAnswerAgent {
+        -retriever: EvidenceRetriever
+        -pending: Query
+        +ask(q: String, p: ProjectProfile, items: List~PaperAnalysis~) Answer
+        +searchPriorWork(idea: String, p: ProjectProfile, items: List~PaperAnalysis~) Answer
+    }
+    class Mode {
+        <<enumeration>>
+        ASK
+        PRIOR_WORK
+    }
+
+    Agent <|-- PaperDiscoveryAgent
+    Agent <|-- PaperAnalysisAgent
+    Agent <|-- ResearchConsultantAgent
+    Agent <|-- ProjectContextAgent
+    Agent <|-- RepositoryAnalysisAgent
+    Agent <|-- GroundedAnswerAgent
+
+    PaperDiscoveryAgent ..> RankedPaper : ranks into
+    PaperAnalysisAgent "1" --> "1" StrategyTaxonomy
+    ResearchConsultantAgent "1" --> "1" ComparabilityChecker
+    ResearchConsultantAgent "1" --> "1" StrategyTaxonomy
+    ResearchConsultantAgent ..> ComparisonResult : creates
+    ResearchConsultantAgent ..> StrategyNode : builds
+    ProjectContextAgent "1" --> "1..*" ProjectContextProvider : view 3
+    ProjectContextAgent ..> ImportedContext : returns
+    RepositoryAnalysisAgent ..> RepoSummary : creates
+    GroundedAnswerAgent "1" --> "1" EvidenceRetriever
+    GroundedAnswerAgent "1" *-- "1" Mode
+    GroundedAnswerAgent ..> Answer : creates
+
+    %% ---------- The one seam to every service ----------
+    class ToolManager {
+        -llm: LLMClient
+        -literatureSource: LiteratureSource
+        -fallbackLiteratureSource: LiteratureSource
+        -parser: PaperParser
+        -github: GitHubClient
+        -callLog: List~String~
+        +callLLM(prompt: String) String
+        +search(query: String, intent: SearchIntent) List~PaperRecord~
+        +findPaper(id: String) Optional~PaperRecord~
+        +parsePaper(p: PaperRecord) String
+        +fetchRepo(url: String) RepoMetadata
+        +getCallLog() List~String~
+    }
+
+    note for Agent "Template Method - run() is final. It calls<br/>plan, executeTools and summarize in that order<br/>and records the plan, so every feature is<br/>inspectable the same way. A subclass cannot<br/>change the order, only the three steps."
+    note for ToolManager "Detailed in view 3. An agent reaches no service<br/>directly, which is what lets every agent be<br/>tested against fakes with no network."
+    note for ResearchConsultantAgent "F13 builds the tree in two passes: the seeded<br/>families, then sub-branches inside each. If the<br/>built-in families hold under half the papers,<br/>regroupFromPapers replaces them with groups<br/>named from the papers themselves."
