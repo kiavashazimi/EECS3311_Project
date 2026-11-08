@@ -53,13 +53,40 @@ All diagrams appear inline in the report. Sources and rendered images are in
 
 | File | Contents |
 |---|---|
-| `class-diagram.mmd` / `.png` | The full class diagram (§3) |
+| `class-diagram.mmd` / `class-diagram-render.png` | The Stage 1 design class diagram (§3) |
+| `class-diagram-stage2-*.mmd` / `.png` | The Stage 2 as-built class diagram, in four views |
 | `use-case-diagram.puml` / `use-case-render.png` | The use-case diagram (§5) |
 | `sd01…sd09-*.mmd` / `.png` | The nine sequence diagrams (§7) |
 | `patterns/pattern-*.mmd` / `.png` | One focused diagram per design pattern (§4) |
 
 Diagrams are written in Mermaid and PlantUML and render directly in the report on GitHub.
 Every diagram also links a rendered image beneath it.
+
+---
+
+## Stage 2 — Implementation
+
+**The complete Stage 2 report:** [`docs/STAGE2.md`](docs/STAGE2.md), submitted as
+[`docs/stage2-report.pdf`](docs/stage2-report.pdf).
+
+All thirteen Stage 1 features are implemented and work from **both** the GUI and the CLI.
+None was dropped. All seven design patterns above are in running code. 573 tests pass; the
+four skipped tests are the live network and live API tests, disabled by default so that
+`mvn test` never spends money or depends on a third-party service.
+
+| Report section | Contents |
+|---|---|
+| [§1](docs/STAGE2.md#1-project-overview-and-implementation-status) | Overview, working functionality, and the limitations stated honestly |
+| [§2](docs/STAGE2.md#2-feature-to-implementation-mapping) | Every feature mapped to its classes, methods, patterns and demo |
+| [§3](docs/STAGE2.md#3-implemented-design-patterns) | The seven patterns as built, with the updated class diagram |
+| [§4](docs/STAGE2.md#4-changes-and-rationale) | 27 changes from the Stage 1 design, with reasons |
+| [§5](docs/STAGE2.md#5-ai-tools-and-collaboration-log) | AI tools and collaboration log |
+| [§6](docs/STAGE2.md#6-development-and-verification-summary) | Commit summary, verification, defects found and fixed |
+| [§7](docs/STAGE2.md#7-demonstration-index) | Feature-by-feature demonstration index |
+
+The as-built class diagram is four views covering all 55 classes — see
+[`docs/diagrams/README.md`](docs/diagrams/README.md) for which is which, and §4 of the
+Stage 2 report for why it is four rather than one.
 
 ---
 
@@ -160,25 +187,30 @@ queries; neither handles a whole research question.
 `0` success · `1` usage error · `2` validation failed, nothing saved · `3` could not write ·
 `4` an agent could not complete
 
-## Planned implementation
-
-| | |
-|---|---|
-| Language | Java |
-| GUI | JavaFX desktop application |
-| CLI | Full command-line access to every major feature |
-| Build | Maven |
-| AI | Claude, via the Anthropic Messages API, behind the `LLMClient` interface |
-
-Implementation begins in Stage 2. This repository currently contains the Stage 1 design
-only.
-
 ## Repository layout
 
 ```
+src/main/java/ca/yorku/eecs3311/consultant/
+  app/         JavaFX client - App, MainGUI, PaperFeedPanel
+  cli/         Cli - the command-line client
+  boot/        Bootstrap - the single composition root for both clients
+  config/      Config - .env and environment settings
+  controller/  AppController - the Facade, plus its two exceptions
+  agent/       Agent and the six agents, Plan, ToolManager, the Observer, DigestBuilder
+  analysis/    ComparabilityChecker, EvidenceRetriever, PaperParser, StrategyTaxonomy
+  literature/  The LiteratureSource Strategy, both sources, SearchIntent, QueryTerms
+  llm/         The LLMClient Adapter and ClaudeClient
+  context/     The ProjectContextProvider Adapter and both providers
+  memory/      ProjectMemory Singleton, MemoryStore, MemoryState
+  repo/        GitHubClient
+  domain/      The domain model, including the StrategyNode Composite
+src/test/java/ 40 test classes and 2 fakes
 docs/
   STAGE1.md            the Stage 1 design report
+  STAGE2.md            the Stage 2 implementation report
+  stage2-report.pdf    the same report, as submitted
   diagrams/            diagram sources (.mmd, .puml) and rendered images (.png)
     patterns/          one class diagram per design pattern
-README.md
+rc, rc-gui             run scripts for the CLI and the GUI
+.env.example           safe example configuration, placeholders only
 ```
