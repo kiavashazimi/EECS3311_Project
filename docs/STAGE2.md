@@ -459,16 +459,30 @@ sources beside them.
 The Stage 1 **use-case diagram and descriptions remain accurate**: no change in this stage
 altered an actor, a use case, or an `<<include>>` or `<<extend>>` relationship.
 
-The **sequence diagrams are accurate with one exception.** C12 and C18 are the two changes
+The **sequence diagrams are accurate with two exceptions.** C12 and C18 are the two changes
 worth checking against SD05 and SD06, and in both cases the implementation preserved the
 ordering the diagram specifies, so neither needed redrawing. SD08 likewise already shows
 `DigestBuilder` collecting papers as a `PaperFeedListener`, which is exactly what C19
-implemented. The exception is SD08's `alt scheduled run` branch, which models the digest
-also being triggered on a schedule with no user action. **There is no scheduler in the
-implementation** — a desktop application the user starts and stops is not running when a
-schedule would fire, so the digest is only ever built on demand from the GUI or `rc digest`.
-That one branch of SD08 should be read as unimplemented; every other message in the nine
-diagrams matches the code.
+implemented.
+
+The first exception is SD08's `alt scheduled run` branch, which models the digest also being
+triggered on a schedule with no user action. **There is no scheduler in the implementation**
+— a desktop application the user starts and stops is not running when a schedule would fire,
+so the digest is only ever built on demand from the GUI or `rc digest`. That one branch of
+SD08 should be read as unimplemented.
+
+The second is **SD02**, which is redrawn rather than annotated. Its provider-selection branch
+shows the coding-agent reader being used *or* the file reader, whichever is available first;
+C28 replaced that with both contributing to a single snapshot, because first-wins made F02's
+own stated output unreachable and left F10 with nothing to compare. The Stage 1 SD02 is kept
+unchanged in `docs/diagrams/sd02-project-context.mmd` and in section 5 of the Stage 1 report;
+the as-built version is below.
+
+**SD02 as built — F02 import, F10 what changed**
+
+![SD02 as built: every available provider contributes to one snapshot](diagrams/sd02-project-context-stage2.png)
+
+Every other message in the nine diagrams matches the code.
 
 ---
 
@@ -671,7 +685,7 @@ Composite absorbed it without modification, which is the pattern's own argument.
 
 ## 4. Changes and rationale
 
-Twenty-seven changes from the Stage 1 design, each as
+Twenty-eight changes from the Stage 1 design, each as
 **Original design → Implemented change → Reason → Impact**. Nothing here is a silent
 difference; every deviation found during implementation is listed.
 
@@ -927,6 +941,49 @@ here will produce and no reader will follow.
 *Impact:* report only, no code. The Stage 1 diagram remains available for the
 original-versus-implemented comparison this section requires.
 
+**C28 — every available context provider contributes, instead of the first one winning.**
+*Original:* Stage 1 specifies two things about F02 that cannot both hold. Its **Output** is
+"extracted facts (recent commits, config values, result files found) merged into project
+memory, *plus* — when a coding agent is available — a description of what the project is
+currently doing". Its **Provider selection** is "the Claude Code provider is attempted first
+when a coding agent is available; otherwise the system falls back to the file-based
+provider". First-available-wins can deliver facts *or* description, never both, so the
+stated output was unreachable by the stated selection rule.
+*Change:* `ProjectContextAgent.executeTools()` scans every provider that reports itself
+available and merges the results into one `ContextSnapshot` — intent from
+`ClaudeCodeContextProvider`, facts from `FileBasedContextProvider` — naming both
+contributors in `providerName`. A provider that is present but fails still contributes
+nothing and never blocks the import, so UC02 3b is unchanged; if every available provider
+fails, `AgentException` is still raised and nothing is stored.
+*Reason:* the selection rule did not merely under-deliver, it corrupted stored state. With a
+`CLAUDE.md` present the snapshot held only a description, so `changesSince()` — which
+compares commits, config entries and result files, never the description — had nothing to
+compare and F10 reported "no changes" whatever the researcher did. Worse, when a `CLAUDE.md`
+appeared between two scans the provider switched mid-project: the re-scan returned a
+description-only snapshot, three result files still present on disk were reported to the
+researcher as **removed**, and `summarizeProjectChanges()` then persisted that impoverished
+snapshot, permanently discarding ten commits and five config entries the application had
+already recorded. A feature whose purpose is keeping the stored project current was making
+it less current.
+*Impact:* F02 now satisfies its own Stage 1 output contract; F10 detects real change with or
+without a `CLAUDE.md`; F11 and F12 keep the commit history they previously lost. Stage 1's
+*Provider selection* sentence is superseded — the providers are complementary, not
+interchangeable, which is what the Output sentence already assumed. The Adapter is unchanged:
+the interface, both implementations and the agent's inability to tell which one answered all
+remain. `selectProvider()` is retained as the Stage 1 class diagram declares it, but the
+import no longer routes through it. SD02 is superseded by
+`docs/diagrams/sd02-project-context-stage2.mmd`; the Stage 1 SD02 is untouched. Four tests:
+one retargeted from asserting sole-provider selection to asserting the description is used,
+three new — a merged snapshot carrying both halves, a `CLAUDE.md` appearing between scans
+reporting no spurious removals, and every-provider-fails still raising `AgentException`.
+**Known limitation, not fixed:** `readCommits()` returns an empty list both for a project
+with no Git repository and for one whose `git` call failed — a worktree where `.git` is a
+file, a repository git refuses for dubious ownership, or a scan that exceeds the ten-second
+timeout on a network mount. `changesSince()` reports added commits but never removed ones,
+so in that case the commit history is dropped from the snapshot silently. Distinguishing
+"never had commits" from "could not read commits" is a design decision rather than a patch,
+and is left to Stage 3.
+
 ---
 
 ## 5. AI tools and collaboration log
@@ -1084,13 +1141,17 @@ Of the twenty, nineteen change implementation or test code; `e2d373b` adds docum
 | Starting a second project was impossible, so the landscape kept mapping the first | User report | `startNewProject()`, a GUI button with confirmation, `rc reset --confirm` (C25) |
 | Every paper outside machine learning landed in one `Unclassified` bucket | User report | The adaptive half of F13 built as specified (C26) |
 | Three education papers mis-tagged `reinforcement learning`, `curriculum learning`, `active learning` by term collision | Live run | `tagsUncertain`, already set by the classifier but previously unused, now honoured during placement (C26) |
+| F10 reported three result files as removed while they were still on disk, then persisted a snapshot that discarded ten commits and five config entries | Probing the providers directly while preparing the F02/F10 demonstrations | Every available provider contributes to one merged snapshot (C28) |
 
 ### Remaining limitations
 
 As listed in section 1: F13's grouping is not reproducible between runs; F04 reads abstracts
 rather than full PDFs; Semantic Scholar's rate limiting makes discovery take about a minute;
 `PaperFeedPanel.showError()` carries a message that is wrong though not harmful; and
-Period 1 has no commits. Stage 3's deterministic testing and KUMA agent validation are out
+Period 1 has no commits. To those is added the one C28 does not fix: a failed `git` call and
+a project with no repository are indistinguishable to `readCommits()`, and removed commits
+are never reported, so a transient Git failure drops the commit history from the snapshot
+silently. Stage 3's deterministic testing and KUMA agent validation are out
 of scope here.
 
 ---

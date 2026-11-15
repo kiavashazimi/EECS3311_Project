@@ -41,13 +41,92 @@ class ProjectContextAgentTest {
     // --- provider selection (UC02 3a / 3b) ----------------------------------
 
     @Test
-    void prefersTheCodingAgentWhenItHasSomethingToSay() throws Exception {
+    void theCodingAgentsOwnDescriptionIsUsedWhenItHasSomethingToSay() throws Exception {
         ProjectContextAgent agent = agent(new FakeLLMClient().respondWith("a summary"));
 
         var imported = importFrom(agent, fixture("agent-project"));
 
-        assertEquals("ClaudeCodeContextProvider", imported.snapshot().getProviderName());
         assertTrue(imported.snapshot().getAgentDescription().contains("HVAC"));
+        assertTrue(imported.snapshot().getProviderName().contains("ClaudeCodeContextProvider"),
+                "the UI must still be able to say where the description came from: "
+                        + imported.snapshot().getProviderName());
+    }
+
+    @Test
+    void everyAvailableProviderContributesToOneSnapshot() throws Exception {
+        // F02's Stage 1 contract is facts *plus* the description. First-wins
+        // could only ever deliver one of the two.
+        Path project = tempDir.resolve("both");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("CLAUDE.md"),
+                "# CLAUDE.md\nRewriting the scheduler; the old one is deliberately broken.\n");
+        Files.writeString(project.resolve("run.yaml"), "model: densenet\nlr: 0.0001\n");
+        Files.writeString(project.resolve("metrics.csv"), "run,auc\n1,0.9\n");
+
+        var imported = importFrom(agent(new FakeLLMClient().respondWith("a summary")), project);
+        ContextSnapshot s = imported.snapshot();
+
+        assertTrue(s.getAgentDescription().contains("scheduler"),
+                "the intent half must survive");
+        assertTrue(s.getConfigEntries().containsKey("run.yaml"),
+                "the facts half must survive: " + s.getConfigEntries());
+        assertTrue(s.getResultFiles().contains("metrics.csv"),
+                "the facts half must survive: " + s.getResultFiles());
+        assertTrue(s.getProviderName().contains("ClaudeCodeContextProvider")
+                        && s.getProviderName().contains("FileBasedContextProvider"),
+                "both contributors must be named: " + s.getProviderName());
+    }
+
+    @Test
+    void addingACodingAgentDescriptionDoesNotReportTheFactsAsRemoved() throws Exception {
+        // The defect this merge fixes: a CLAUDE.md appearing between two scans
+        // switched providers, so files still on disk were reported as removed
+        // and the stored facts were replaced with a description-only snapshot.
+        Path project = tempDir.resolve("gains-a-description");
+        Files.createDirectories(project);
+        Files.writeString(project.resolve("run.yaml"), "model: densenet\nlr: 0.0001\n");
+        Files.writeString(project.resolve("metrics.csv"), "run,auc\n1,0.9\n");
+
+        ProjectContextAgent agent = agent(new FakeLLMClient().respondWith("a summary"));
+        ContextSnapshot before = importFrom(agent, project).snapshot();
+
+        Files.writeString(project.resolve("CLAUDE.md"), "# CLAUDE.md\nMid-refactor.\n");
+        ContextSnapshot after = ((ProjectContextAgent.ImportedContext)
+                agent.run(new ProjectContextAgent.Import(project, before))).snapshot();
+
+        assertEquals(List.of(), after.changesSince(before),
+                "nothing was added or deleted, so nothing may be reported");
+        assertTrue(after.getResultFiles().contains("metrics.csv"),
+                "a file still on disk must not vanish from the snapshot");
+        assertFalse(after.getAgentDescription().isBlank(),
+                "and the new description must still be picked up");
+    }
+
+    @Test
+    void whenEveryAvailableProviderFailsTheImportIsReported() {
+        ProjectContextProvider broken = new ProjectContextProvider() {
+            @Override
+            public boolean isAvailable(Path projectPath) {
+                return true;
+            }
+
+            @Override
+            public ContextSnapshot scan(Path projectPath) throws IOException {
+                throw new IOException("the coding agent timed out");
+            }
+
+            @Override
+            public String name() {
+                return "BrokenProvider";
+            }
+        };
+
+        ProjectContextAgent agent = new ProjectContextAgent(
+                new ToolManager(new FakeLLMClient()), List.of(broken));
+
+        AgentException thrown = assertThrows(AgentException.class,
+                () -> importFrom(agent, fixture("plain-project")));
+        assertTrue(thrown.getMessage().contains("timed out"), thrown.getMessage());
     }
 
     @Test

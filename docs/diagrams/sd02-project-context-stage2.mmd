@@ -1,0 +1,70 @@
+%% SD02 (as built, Stage 2) - F02 import project context, and F10 what changed.
+%% Supersedes sd02-project-context.mmd, which is kept unchanged as the Stage 1 record.
+%% The one difference: every available provider contributes to a single snapshot,
+%% rather than the first available one winning and discarding the other's half.
+sequenceDiagram
+    autonumber
+    actor R as Researcher
+    participant GUI as MainGUI
+    participant C as AppController
+    participant A as ProjectContextAgent
+    participant CC as ClaudeCodeContextProvider
+    participant FB as FileBasedContextProvider
+    participant M as ProjectMemory
+    participant L as LLMClient
+
+    Note over R,L: F02 - import project context
+    R->>+GUI: picks a project directory
+    GUI->>+C: importProjectContext(path)
+    C->>+A: run(path)
+    A->>A: availableProviders(path)
+
+    Note over A,FB: every available provider contributes - they are<br/>complementary, not interchangeable
+    opt coding-agent context present
+        A->>+CC: scan(path)
+        CC-->>-A: intent: what is in progress
+    end
+    opt directory is readable
+        A->>+FB: scan(path)
+        FB-->>-A: facts: commits, configs, result files
+    end
+    A->>A: merge into one ContextSnapshot
+    break no provider could be read
+        A-->>C: AgentException, nothing stored
+    end
+
+    A->>+L: generate(prompt with notable items)
+    alt LLM unavailable
+        L-->>A: ServiceError
+        A-->>C: snapshot only, summary unavailable
+    else summary returned
+        L-->>A: readable summary
+        A-->>C: snapshot + summary
+    end
+    deactivate L
+    deactivate A
+    C->>+M: saveSnapshot(s)
+    M-->>-C: stored
+    C-->>-GUI: imported facts + contributing providers
+    GUI-->>-R: shows context, labelled by provider
+
+    Note over R,L: F10 - project change summary, later
+    R->>+GUI: opens "What changed"
+    GUI->>+C: summarizeProjectChanges()
+    C->>+M: getLastSnapshot()
+    alt no prior snapshot
+        M-->>C: empty snapshot
+        C-->>GUI: prompt to import first
+        GUI-->>R: "import your project first"
+    else a snapshot exists
+        M-->>-C: previous ContextSnapshot
+        C->>+A: run(previous)
+        A->>A: re-scan with the same providers
+        A->>A: summarizeChanges(old, cur)
+        A->>+L: generate(prompt with the diff)
+        L-->>-A: natural-language summary
+        A-->>-C: summary
+        C->>M: saveSnapshot(cur)
+        C-->>-GUI: summary
+        GUI-->>-R: "What changed" panel
+    end

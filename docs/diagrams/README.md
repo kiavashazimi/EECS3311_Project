@@ -32,7 +32,13 @@ Reading conventions, stated on the diagrams themselves:
 
 ## Sequence diagrams
 
-`sd01`–`sd09`, one per Stage 1 sequence diagram, in `../STAGE1.md` section 5.
+`sd01`–`sd09`, one per Stage 1 sequence diagram, in `../STAGE1.md` section 5. These are the
+Stage 1 originals and are left unchanged.
+
+`sd02-project-context-stage2` is the as-built version of SD02 (F02 import, F10 what
+changed). It supersedes `sd02-project-context` in one respect: every available context
+provider contributes to a single snapshot, rather than the first available one winning and
+discarding the other's half. See C28 in `../STAGE2.md` section 4.
 
 ## Other
 

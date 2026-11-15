@@ -7,15 +7,19 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * F02 and F10 — loads the live state of the researcher's own project, and says
  * what has changed since last time.
  *
- * <p>Holds the providers in order and picks one at runtime, which is the half
- * of the Adapter pattern a class diagram cannot show. A provider that is
- * present but unusable falls through to the next, so a failing stretch-goal
- * integration can never block the import — UC02 flows 3a and 3b.
+ * <p>Holds the providers in order and asks every one that can read the
+ * directory, which is the half of the Adapter pattern a class diagram cannot
+ * show. They are complementary rather than interchangeable — the coding agent
+ * supplies intent, the file reader supplies facts — so their snapshots are
+ * merged instead of the first one winning. A provider that is present but
+ * unusable contributes nothing and never blocks the import, which is UC02
+ * flows 3a and 3b.
  */
 public class ProjectContextAgent extends Agent {
 
@@ -40,7 +44,13 @@ public class ProjectContextAgent extends Agent {
     /**
      * Picks the first provider that says it can read this directory.
      *
-     * @return the chosen provider, or null when none can
+     * <p>Retained because the Stage 1 class diagram declares it, and because it
+     * answers "which reader takes precedence here?" on its own. The import no
+     * longer routes through it: every available provider contributes (C28), so
+     * this reports the highest-priority one rather than the only one used.
+     *
+     * @return the highest-priority provider that can read the path, or null
+     *     when none can
      */
     public ProjectContextProvider selectProvider(Path projectPath) {
         for (ProjectContextProvider provider : providers) {
@@ -98,41 +108,107 @@ public class ProjectContextAgent extends Agent {
         this.pending = request.projectPath();
         this.previous = request.previous();
 
-        ProjectContextProvider chosen = selectProvider(pending);
-        if (chosen == null) {
+        List<ProjectContextProvider> usable = availableProviders(pending);
+        if (usable.isEmpty()) {
             // UC02 1a: reported, and nothing is stored
             throw new AgentException("cannot read a project at " + pending);
         }
-        return new Plan()
-                .addStep("read the project with " + chosen.name())
+        Plan plan = new Plan()
+                .addStep("read the project with " + usable.stream()
+                        .map(ProjectContextProvider::name)
+                        .collect(Collectors.joining(" and ")))
                 .addStep("diff against the previous snapshot")
-                .addStep("summarise what is notable")
-                .addToolCall(chosen.name());
+                .addStep("summarise what is notable");
+        for (ProjectContextProvider provider : usable) {
+            plan.addToolCall(provider.name());
+        }
+        return plan;
+    }
+
+    /** @return every provider that can read this directory, in declared order */
+    private List<ProjectContextProvider> availableProviders(Path projectPath) {
+        List<ProjectContextProvider> usable = new ArrayList<>();
+        for (ProjectContextProvider provider : providers) {
+            if (provider.isAvailable(projectPath)) {
+                usable.add(provider);
+            }
+        }
+        return usable;
     }
 
     @Override
     protected Object executeTools(Plan plan) throws AgentException {
-        ContextSnapshot snapshot = null;
+        ContextSnapshot merged = null;
         IOException last = null;
 
-        // tries each provider in turn: one that is present but unusable must
-        // not block the import (UC02 3b)
-        for (ProjectContextProvider provider : providers) {
-            if (!provider.isAvailable(pending)) {
-                continue;
-            }
+        // Every available provider contributes, rather than the first one
+        // winning. The two readers are complementary, not interchangeable:
+        // the coding agent supplies intent and the file reader supplies facts,
+        // so stopping at the first meant whichever answered silently discarded
+        // the other's half. With a CLAUDE.md present that cost F10 its entire
+        // basis for a diff, and made an unchanged project report its own result
+        // files as removed. F02's Stage 1 contract asks for facts *plus* the
+        // description, which only merging can deliver.
+        //
+        // A provider that is present but unusable still falls through to the
+        // next, so a failing stretch-goal integration can never block the
+        // import (UC02 3b).
+        for (ProjectContextProvider provider : availableProviders(pending)) {
             try {
-                snapshot = provider.scan(pending);
-                break;
+                merged = mergeInto(merged, provider.scan(pending));
             } catch (IOException e) {
                 last = e;
             }
         }
-        if (snapshot == null) {
+        if (merged == null) {
             throw new AgentException("could not read the project at " + pending
                     + (last == null ? "" : ": " + last.getMessage()), last);
         }
-        return snapshot;
+        return merged;
+    }
+
+    /**
+     * Folds one provider's snapshot into the running result.
+     *
+     * <p>First non-empty wins per field, so provider order still decides any
+     * overlap and the result does not depend on how many providers ran. Today
+     * the two implementations populate disjoint fields, which makes the rule
+     * invisible; it exists so that a third provider cannot make the outcome
+     * order-dependent in a way nobody notices.
+     *
+     * @param into the merged snapshot so far, or null for the first contributor
+     * @param addition the snapshot just scanned, never null
+     * @return the merged snapshot
+     */
+    private static ContextSnapshot mergeInto(ContextSnapshot into, ContextSnapshot addition) {
+        if (into == null) {
+            ContextSnapshot first = new ContextSnapshot(
+                    addition.getScannedAt(), addition.getProjectPath());
+            first.setProviderName(addition.getProviderName());
+            first.setRecentCommits(addition.getRecentCommits());
+            first.setConfigEntries(addition.getConfigEntries());
+            first.setResultFiles(addition.getResultFiles());
+            first.setAgentDescription(addition.getAgentDescription());
+            return first;
+        }
+        if (!addition.getProviderName().isBlank()) {
+            into.setProviderName(into.getProviderName().isBlank()
+                    ? addition.getProviderName()
+                    : into.getProviderName() + " + " + addition.getProviderName());
+        }
+        if (into.getRecentCommits().isEmpty()) {
+            into.setRecentCommits(addition.getRecentCommits());
+        }
+        if (into.getConfigEntries().isEmpty()) {
+            into.setConfigEntries(addition.getConfigEntries());
+        }
+        if (into.getResultFiles().isEmpty()) {
+            into.setResultFiles(addition.getResultFiles());
+        }
+        if (into.getAgentDescription().isBlank()) {
+            into.setAgentDescription(addition.getAgentDescription());
+        }
+        return into;
     }
 
     @Override
