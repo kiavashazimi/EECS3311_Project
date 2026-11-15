@@ -47,8 +47,10 @@ class GroundedAnswerAgentTest {
     }
 
     private static PaperAnalysis fairDiffusion() {
-        PaperAnalysis a = new PaperAnalysis(
-                new PaperRecord("2412.20374v2", "FairDiffusion", "arXiv cs.CV", "2024-12-29"));
+        PaperRecord record =
+                new PaperRecord("2412.20374v2", "FairDiffusion", "arXiv cs.CV", "2024-12-29");
+        record.setUrl("http://arxiv.org/abs/2412.20374v2");
+        PaperAnalysis a = new PaperAnalysis(record);
         a.setMethod("a fair Bayesian perturbation inside a latent diffusion model");
         a.setDataset("CheXpert");
         a.setStrategyTags(List.of("diffusion model"));
@@ -114,6 +116,20 @@ class GroundedAnswerAgentTest {
         assertTrue(prompt.contains("FairDiffusion"), prompt);
         assertTrue(prompt.toLowerCase().contains("only"),
                 "the prompt must confine the model to the retrieved records: " + prompt);
+    }
+
+    @Test
+    void aCitedSourceCarriesTheAddressOfThePaper() throws Exception {
+        // The id alone is not enough: Semantic Scholar ids are content hashes,
+        // so a grounded answer would cite papers the researcher cannot open.
+        llm.respondWith("an answer");
+
+        Answer answer = agent.ask("What does FairDiffusion do on CheXpert?",
+                profile(), List.of(fairDiffusion()));
+
+        assertTrue(answer.getSources().stream()
+                        .anyMatch(s -> s.contains("http://arxiv.org/abs/2412.20374v2")),
+                answer.getSources().toString());
     }
 
     @Test

@@ -685,7 +685,7 @@ Composite absorbed it without modification, which is the pattern's own argument.
 
 ## 4. Changes and rationale
 
-Twenty-nine changes from the Stage 1 design, each as
+Thirty changes from the Stage 1 design, each as
 **Original design → Implemented change → Reason → Impact**. Nothing here is a silent
 difference; every deviation found during implementation is listed.
 
@@ -1030,6 +1030,23 @@ thirty-one machine-learning terms and the corpus is education research, which is
 mismatch C26 solved for the landscape by regrouping from the papers themselves. The digest
 has no such escape hatch, so printing nothing is its correct output here.
 
+**C30 — a paper's address is shown wherever the paper is.**
+*Original:* Stage 1 lists `url` on `PaperRecord` but never says which views display it.
+*Change:* the stored URL is printed in the GUI feed row, the GUI analysis panel, `rc analyze`,
+and every source line of a grounded answer (F08 and F11). It was already printed by
+`rc discover` and in the digest's new-paper list.
+*Reason:* four of the six views identified a paper by id alone, and an id is not always
+something a reader can act on. An arXiv id can be turned into an address by hand; a Semantic
+Scholar id is a content hash — `72c301c4bb13e3edb06ad175af02b20acd88e49c` — and cannot. All
+twelve papers in the live project store a usable DOI link, so in the GUI the application held
+the address of every paper and showed it nowhere, and a grounded answer cited sources the
+researcher could not open.
+*Impact:* display only; no new data, no model calls, no stored field. A blank URL prints
+nothing rather than an empty separator. Three tests. **Known limitation:** the GUI rows are
+plain text in a `ListView`, so the address is selectable and copyable but not clickable;
+making it a live hyperlink needs a custom cell and a desktop-browser call, which is left to
+Stage 3.
+
 ---
 
 ## 5. AI tools and collaboration log
@@ -1221,7 +1238,7 @@ and the CLI working. No recording exposes an API key or any credential.
 | Feature | Client shown | Alternative / error path to demonstrate | Link and timestamp |
 |---|---|---|---|
 | F01 Project profile setup | GUI + CLI | Save with a blank research question — rejected, nothing persisted | [TO BE FILLED] |
-| F02 Import project context | GUI | Provider fallback, with `providerName` visible in the result | [TO BE FILLED] |
+| F02 Import project context | GUI | A directory that cannot be read, reported with nothing stored; `providerName` naming both contributing providers (C28) | [TO BE FILLED] |
 | F03 Discover new papers | GUI + CLI | Zero results widened and retried; unranked result when ranking fails | [TO BE FILLED] |
 | F04 Analyze a paper | GUI + CLI | A paper whose abstract leaves fields `UNKNOWN` | [TO BE FILLED] |
 | F05 Classify by strategy | GUI | An uncertain tag shown as uncertain rather than accepted | [TO BE FILLED] |
@@ -1231,7 +1248,7 @@ and the CLI working. No recording exposes an API key or any credential.
 | F09 Repository analysis | GUI + CLI | A paper with no repository, and an unreachable one | [TO BE FILLED] |
 | F10 Project change summary | GUI + CLI | No prior snapshot, pointing at F02 | [TO BE FILLED] |
 | F11 Project-aware chat | GUI + CLI | A question with no relevant stored record | [TO BE FILLED] |
-| F12 Weekly digest | GUI + CLI | Nothing new since the last digest | [TO BE FILLED] |
+| F12 Weekly digest | GUI + CLI | Nothing new since the last digest — press it twice, the second is correctly empty (C29) | [TO BE FILLED] |
 | F13 Solution landscape | GUI | Too few papers for sub-branches; the unclassified branch | [TO BE FILLED] |
 
 **Suggested recording order**, so that each demonstration has the state it needs: F01 → F02

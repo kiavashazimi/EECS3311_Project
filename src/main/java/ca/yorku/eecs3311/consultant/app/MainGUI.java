@@ -816,7 +816,11 @@ public class MainGUI {
 
     private static String describe(PaperAnalysis a) {
         StringBuilder b = new StringBuilder();
-        b.append(a.getPaper().getTitle()).append("\n\n");
+        b.append(a.getPaper().getTitle()).append("\n");
+        if (!a.getPaper().getUrl().isBlank()) {
+            b.append(a.getPaper().getUrl()).append('\n');
+        }
+        b.append('\n');
         b.append("Problem      ").append(a.getProblem()).append('\n');
         b.append("Method       ").append(a.getMethod()).append('\n');
         b.append("Dataset      ").append(a.getDataset()).append('\n');

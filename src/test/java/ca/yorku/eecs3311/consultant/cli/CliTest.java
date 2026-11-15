@@ -291,6 +291,8 @@ class CliTest {
         assertTrue(printed.contains("DenseNet-121"), printed);
         assertTrue(printed.contains("diffusion model"),
                 "the tag should be canonical, not the model's wording: " + printed);
+        assertTrue(printed.contains("http://arxiv.org/abs/2304.09218"),
+                "the researcher has to be able to go and read it: " + printed);
     }
 
     @Test

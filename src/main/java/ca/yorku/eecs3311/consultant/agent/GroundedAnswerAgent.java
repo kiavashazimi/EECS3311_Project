@@ -162,6 +162,25 @@ public class GroundedAnswerAgent extends Agent {
         return new Evidence(stored, live, gap);
     }
 
+    /**
+     * One cited source, with its address when the record has one.
+     *
+     * <p>The id alone is not enough to find the paper again: Semantic Scholar
+     * ids are content hashes, so a researcher reading a grounded answer could
+     * see what it was built from without being able to go and read it.
+     *
+     * @param p the cited paper
+     * @param origin "already analysed" or "found just now"
+     * @return the source line
+     */
+    private static String sourceLine(PaperRecord p, String origin) {
+        StringBuilder line = new StringBuilder(p.getId()).append(" - ").append(p.getTitle());
+        if (!p.getUrl().isBlank()) {
+            line.append(" - ").append(p.getUrl());
+        }
+        return line.append(" (").append(origin).append(')').toString();
+    }
+
     @Override
     protected Object summarize(Object result) {
         Evidence evidence = (Evidence) result;
@@ -180,11 +199,10 @@ public class GroundedAnswerAgent extends Agent {
             answer.addSource("your project profile");
         }
         for (PaperAnalysis a : evidence.stored()) {
-            answer.addSource(a.getPaper().getId() + " - " + a.getPaper().getTitle()
-                    + " (already analysed)");
+            answer.addSource(sourceLine(a.getPaper(), "already analysed"));
         }
         for (PaperRecord p : evidence.live()) {
-            answer.addSource(p.getId() + " - " + p.getTitle() + " (found just now)");
+            answer.addSource(sourceLine(p, "found just now"));
         }
         if (pending.mode() == Mode.PRIOR_WORK) {
             answer.setNote(join(evidence.gap(), "This is the closest evidence these searches"

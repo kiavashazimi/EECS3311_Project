@@ -179,6 +179,11 @@ public class PaperFeedPanel implements PaperFeedListener {
             row.append("   ").append(ANALYSED_MARKER);
         }
         row.append("\n       ").append(p.getDate()).append("  ").append(p.getVenue());
+        // the id is often a Semantic Scholar hash, which nobody can turn into
+        // an address by hand; the record carries the real link already
+        if (!p.getUrl().isBlank()) {
+            row.append("  ").append(p.getUrl());
+        }
         if (!entry.why().isBlank()) {
             row.append("\n       ").append(entry.why());
         }

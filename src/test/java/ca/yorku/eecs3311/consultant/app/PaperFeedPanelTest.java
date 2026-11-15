@@ -56,6 +56,30 @@ class PaperFeedPanelTest {
     }
 
     @Test
+    void aRowCarriesTheAddressOfThePaperNotJustItsId() {
+        // Semantic Scholar ids are content hashes, so a row showing only the
+        // id gives the researcher no way to go and read the paper.
+        PaperRecord withUrl = new PaperRecord("abc123", "FairDiffusion", "arXiv cs.CV",
+                "2026-02-01");
+        withUrl.setUrl("https://doi.org/10.1234/example");
+
+        String row = PaperFeedPanel.rowText(new RankedPaper(withUrl, 90, "close", false), false);
+
+        assertTrue(row.contains("https://doi.org/10.1234/example"), row);
+    }
+
+    @Test
+    void aRowWithNoAddressDoesNotPrintAnEmptyOne() {
+        PaperRecord noUrl = new PaperRecord("abc123", "FairDiffusion", "arXiv cs.CV",
+                "2026-02-01");
+
+        String row = PaperFeedPanel.rowText(new RankedPaper(noUrl, 90, "close", false), false);
+
+        assertTrue(row.contains("FairDiffusion"), row);
+        assertFalse(row.contains("  \n"), "no dangling separator: " + row);
+    }
+
+    @Test
     void theRankingFailureIsStillVisibleOnAStaleFeed() {
         String heading = PaperFeedPanel.staleHeading(
                 "12 papers - NOT RANKED, the reply could not be read");

@@ -399,6 +399,9 @@ public class Cli {
     private void printAnalysis(PaperAnalysis a) {
         out.println(a.getPaper().getTitle());
         out.println("  id          : " + a.getPaper().getId());
+        if (!a.getPaper().getUrl().isBlank()) {
+            out.println("  link        : " + a.getPaper().getUrl());
+        }
         out.println("  problem     : " + a.getProblem());
         out.println("  method      : " + a.getMethod());
         out.println("  dataset     : " + a.getDataset());
