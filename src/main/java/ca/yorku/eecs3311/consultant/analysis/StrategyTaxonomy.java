@@ -82,6 +82,57 @@ public class StrategyTaxonomy {
         s.put("multi-task learning", List.of("multi-task", "multitask"));
         s.put("federated learning", List.of("federated"));
         s.put("prompt engineering", List.of("prompting", "in-context learning"));
+        // --- added in C31: the families below needed vocabulary that did not
+        // exist. Every entry is a multi-word phrase or an unambiguous acronym;
+        // single common words are avoided on purpose, because the taxonomy's
+        // worst failure mode is a term collision tagging an unrelated paper.
+        s.put("bias auditing", List.of("fairness audit", "bias audit", "auditing bias",
+                "disparity measurement", "subgroup analysis", "underdiagnosis analysis"));
+        s.put("benchmark construction", List.of("new benchmark", "benchmark dataset",
+                "benchmark suite"));
+        s.put("evaluation metric design", List.of("metric design", "new evaluation metric",
+                "proposed metric"));
+        s.put("robustness evaluation", List.of("robustness benchmark", "stress test",
+                "distribution shift evaluation"));
+        s.put("interpretability analysis", List.of("interpretability", "explainability",
+                "saliency analysis", "feature attribution"));
+        s.put("reproducibility study", List.of("replication study", "reproducibility",
+                "reproduction study"));
+        s.put("error analysis", List.of("failure analysis", "failure mode analysis"));
+        s.put("data curation", List.of("dataset curation", "curated dataset", "data cleaning"));
+        s.put("data annotation", List.of("labeling", "labelling", "annotation protocol",
+                "relabeling", "relabelling", "label noise correction"));
+        s.put("data selection", List.of("coreset", "data pruning", "subset selection",
+                "data filtering"));
+        s.put("graph neural network", List.of("gnn", "graph convolution",
+                "graph neural networks"));
+        s.put("recurrent architecture", List.of("recurrent neural network", "rnn", "lstm",
+                "gru"));
+        s.put("attention mechanism", List.of("self-attention", "cross-attention",
+                "attention module"));
+        s.put("embedding learning", List.of("representation learning", "embedding space",
+                "latent representation"));
+        s.put("neural architecture search", List.of("nas", "architecture search"));
+        s.put("loss function design", List.of("custom loss", "novel loss", "loss term",
+                "objective function"));
+        s.put("distributionally robust optimization", List.of("group dro", "dro",
+                "worst-group optimization", "worst-case optimization"));
+        s.put("semi-supervised learning", List.of("semi-supervised", "pseudo-labeling",
+                "pseudo-labelling"));
+        s.put("continual learning", List.of("lifelong learning", "catastrophic forgetting",
+                "incremental learning"));
+        s.put("optimizer and schedule", List.of("learning rate schedule", "optimizer",
+                "optimiser", "warmup", "sgd"));
+        s.put("autoregressive model", List.of("autoregressive", "next-token prediction"));
+        s.put("flow-based model", List.of("normalizing flow", "normalising flow"));
+        s.put("threshold adjustment", List.of("threshold tuning", "decision threshold",
+                "operating point"));
+        s.put("uncertainty estimation", List.of("uncertainty quantification",
+                "conformal prediction", "predictive uncertainty"));
+        s.put("model compression", List.of("quantization", "quantisation", "pruning",
+                "sparsification"));
+        s.put("drift monitoring", List.of("distribution drift", "data drift",
+                "model monitoring", "post-deployment monitoring"));
         return s;
     }
 
@@ -189,21 +240,30 @@ public class StrategyTaxonomy {
 
     private static Map<String, List<String>> families() {
         Map<String, List<String>> f = new LinkedHashMap<>();
-        f.put("Data-level approaches", List.of("data augmentation",
-                "synthetic data generation", "resampling", "reweighting"));
-        f.put("Generative approaches", List.of("generative model", "diffusion model",
+        f.put("Problem framing and measurement", List.of("bias auditing",
+                "benchmark construction", "evaluation metric design", "robustness evaluation",
+                "interpretability analysis", "reproducibility study", "error analysis"));
+        f.put("Data", List.of("data augmentation", "synthetic data generation", "resampling",
+                "reweighting", "data curation", "data annotation", "data selection"));
+        f.put("Representation and architecture", List.of("convolutional architecture",
+                "transformer architecture", "representation disentanglement",
+                "graph neural network", "recurrent architecture", "attention mechanism",
+                "embedding learning", "neural architecture search", "causal intervention"));
+        f.put("Training objective", List.of("adversarial training", "contrastive learning",
+                "multi-task learning", "knowledge distillation", "fairness constraint",
+                "regularization", "loss function design",
+                "distributionally robust optimization"));
+        f.put("Training procedure", List.of("transfer learning", "fine-tuning",
+                "self-supervised pretraining", "curriculum learning", "active learning",
+                "federated learning", "reinforcement learning", "semi-supervised learning",
+                "continual learning", "optimizer and schedule", "domain adaptation"));
+        f.put("Generative modelling", List.of("generative model", "diffusion model",
                 "generative adversarial network", "variational autoencoder",
-                "conditional generation", "counterfactual generation"));
-        f.put("Training-level approaches", List.of("adversarial training", "curriculum learning",
-                "multi-task learning", "transfer learning", "fine-tuning",
-                "self-supervised pretraining", "contrastive learning", "active learning",
-                "federated learning", "prompt engineering", "retrieval augmentation"));
-        f.put("Model-level approaches", List.of("transformer architecture",
-                "convolutional architecture", "ensembling", "regularization",
-                "knowledge distillation", "reinforcement learning"));
-        f.put("Constraint and representation approaches", List.of("fairness constraint",
-                "representation disentanglement", "causal intervention", "domain adaptation"));
-        f.put("Post-hoc approaches", List.of("post-hoc calibration"));
+                "conditional generation", "counterfactual generation", "autoregressive model",
+                "flow-based model"));
+        f.put("Inference and deployment", List.of("prompt engineering", "retrieval augmentation",
+                "post-hoc calibration", "ensembling", "threshold adjustment",
+                "uncertainty estimation", "model compression", "drift monitoring"));
         return f;
     }
 

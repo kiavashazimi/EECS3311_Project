@@ -1026,7 +1026,7 @@ is deterministic and free, so it could be run on an abstract, but on the twelve 
 concept-mapping analyses it yields five tags against the method field's two, and all five are
 term collisions — `active learning` on a concept-map construction study, `curriculum learning`
 on a flipped-classroom paper. None of the twelve can be tagged correctly: the vocabulary is
-thirty-one machine-learning terms and the corpus is education research, which is the same
+machine-learning terms and the corpus is education research, which is the same
 mismatch C26 solved for the landscape by regrouping from the papers themselves. The digest
 has no such escape hatch, so printing nothing is its correct output here.
 
@@ -1046,6 +1046,40 @@ nothing rather than an empty separator. Three tests. **Known limitation:** the G
 plain text in a `ListView`, so the address is selectable and copyable but not clickable;
 making it a live hyperlink needs a custom cell and a desktop-browser call, which is left to
 Stage 3.
+
+**C31 — the strategy taxonomy is rebuilt on one axis, and the model is shown it.**
+*Original:* Stage 1 specifies a fixed, domain-general vocabulary of research strategies, with
+`StrategyTaxonomy` deciding which of the model's suggested tags the system recognises.
+*Change:* two parts. The six families are replaced by seven that answer a single question —
+*what does the paper change?* — and the vocabulary grows from 32 tags to 58. Three tags move
+to the family they belong to: `reinforcement learning` is a learning paradigm, not an
+architecture; `regularization` is a training objective; `prompt engineering` and
+`retrieval augmentation` happen at inference. A new family, **Problem framing and
+measurement**, covers auditing, benchmarking, metric design, robustness evaluation,
+interpretability, reproducibility and error analysis. Separately, the extraction prompt now
+lists the vocabulary and instructs the model to choose from it, where before it asked only
+for "the techniques used".
+*Reason:* the old families sat on three different axes at once — pipeline stage (Data-level,
+Training-level, Post-hoc), model type (Generative) and architecture layer (Model-level) — so
+a paper could belong to several, which is why placement needs a majority vote rather than a
+lookup. They were also uneven, eleven tags against one, and omitted an entire genre: papers
+that *measure* rather than intervene had nowhere to go, which sent a live six-paper fairness
+corpus through the regrouping path with four model-invented branches. The prompt defect was
+worse and cheaper: the model was never told the vocabulary, so it wrote reasonable tags in
+its own words and `settleTags` discarded every one it did not recognise. Eleven of twelve
+stored analyses are marked uncertain, and that is the better explanation for it.
+*Impact:* 58 tags, 7 families, every tag filed — a test asserts no tag is orphaned, because a
+tag in the vocabulary but in no family would quietly send its papers to `Unclassified`.
+Vocabulary added here is phrases and acronyms only, never single everyday words, and a test
+enforces it: the taxonomy's worst failure is a term collision, and `reinforcement learning`
+on a concept-mapping paper is what one looks like. Four single-word tags predate the rule and
+are grandfathered with that reasoning recorded. Stored analyses are unaffected — no tag was
+removed, so the twelve analysed papers keep their tags and only change family. Measured on
+that corpus, the richer vocabulary introduces **no new false matches**. Twenty tests were
+retargeted from the old family names and six added. **Known limitation:** no fixed vocabulary
+covers machine learning — Papers With Code needs 133 categories — so this reduces how often
+the adaptive regrouping of C26 is needed without removing the need for it, which is the point
+of having it.
 
 ---
 

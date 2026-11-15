@@ -570,14 +570,14 @@ class CliTest {
     @Test
     void landscapeGroupsPapersUnderSeededFamilies() {
         givenAnalysedPapers("diffusion", "resampling", "data augmentation");
-        llm.respondWith("{\"Generative approaches\":\"they synthesise examples\","
-                + "\"Data-level approaches\":\"they change the training data\"}");
+        llm.respondWith("{\"Generative modelling\":\"they synthesise examples\","
+                + "\"Data\":\"they change the training data\"}");
 
         assertEquals(0, cli.run(new String[] {"landscape"}), stderr());
 
         String printed = stdout();
-        assertTrue(printed.contains("Generative approaches"), printed);
-        assertTrue(printed.contains("Data-level approaches"), printed);
+        assertTrue(printed.contains("Generative modelling"), printed);
+        assertTrue(printed.contains("Data"), printed);
         assertTrue(printed.contains("they synthesise examples"), printed);
         assertTrue(printed.contains("3 analysed paper"), printed);
     }
@@ -624,7 +624,7 @@ class CliTest {
         llm.failWith("no key");
 
         assertEquals(0, cli.run(new String[] {"landscape"}));
-        assertTrue(stdout().contains("Generative approaches"),
+        assertTrue(stdout().contains("Generative modelling"),
                 "the structure is deterministic: " + stdout());
     }
 

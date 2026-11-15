@@ -20,7 +20,7 @@ class StrategyNodeTest {
 
     @Test
     void aFreshNodeIsALeaf() {
-        StrategyNode node = new StrategyNode("Data-level approaches");
+        StrategyNode node = new StrategyNode("Data");
         assertTrue(node.isLeaf());
         assertEquals(0, node.paperCount());
     }
@@ -101,10 +101,10 @@ class StrategyNodeTest {
     @Test
     void findLocatesANodeAtAnyDepthIgnoringCase() {
         StrategyNode root = new StrategyNode("root");
-        StrategyNode deep = new StrategyNode("Generative approaches");
+        StrategyNode deep = new StrategyNode("Generative modelling");
         root.add(new StrategyNode("mid").add(deep));
 
-        assertEquals(deep, root.find("generative APPROACHES"));
+        assertEquals(deep, root.find("generative MODELLING"));
         assertNull(root.find("nothing here"));
     }
 

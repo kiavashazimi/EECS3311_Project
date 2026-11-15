@@ -42,6 +42,24 @@ class PaperAnalysisAgentTest {
     // --- F04: extraction -----------------------------------------------------
 
     @Test
+    void theExtractionPromptNamesTheTagsItWillAccept() throws Exception {
+        // Until C31 the prompt asked for "the techniques used" and never said
+        // what the taxonomy knows, then every unrecognised suggestion was
+        // discarded. The model was guessing at a closed list it had not seen,
+        // which is why a live set of twelve papers came back eleven uncertain.
+        StrategyTaxonomy taxonomy = new StrategyTaxonomy();
+        FakeLLMClient llm = new FakeLLMClient().respondWith(GOOD_REPLY);
+
+        new PaperAnalysisAgent(new ToolManager(llm)).run(paper());
+
+        String prompt = llm.promptsSeen().get(0);
+        for (String tag : taxonomy.getKnownStrategies()) {
+            assertTrue(prompt.contains(tag), "the prompt must offer " + tag + ": " + prompt);
+        }
+        assertTrue(prompt.contains("FROM THIS LIST ONLY"), prompt);
+    }
+
+    @Test
     void extractsEveryStructuredField() throws Exception {
         PaperAnalysis a = analyse(GOOD_REPLY);
 

@@ -12,6 +12,76 @@ class StrategyTaxonomyTest {
 
     private final StrategyTaxonomy taxonomy = new StrategyTaxonomy();
 
+    // --- C31: the families, on one axis ------------------------------------
+
+    @Test
+    void everyCanonicalTagBelongsToAFamily() {
+        // A tag added to the vocabulary but not to a family would silently land
+        // every paper carrying it under Unclassified, which reads as "this
+        // paper fits nothing" rather than "we forgot to file the tag".
+        List<String> orphans = taxonomy.getKnownStrategies().stream()
+                .filter(tag -> StrategyTaxonomy.UNCLASSIFIED.equals(taxonomy.familyOf(tag)))
+                .toList();
+
+        assertTrue(orphans.isEmpty(), "tags in no family: " + orphans);
+    }
+
+    @Test
+    void theFamiliesSitOnOneAxis() {
+        // Before C31 the six families mixed pipeline stage, model type and
+        // objective, so a paper could belong to several at once. The question
+        // each family answers now is the same one: what does the paper change?
+        assertEquals("Data", taxonomy.familyOf("synthetic data generation"));
+        assertEquals("Training objective", taxonomy.familyOf("fairness constraint"));
+        assertEquals("Training procedure", taxonomy.familyOf("transfer learning"));
+        assertEquals("Representation and architecture",
+                taxonomy.familyOf("transformer architecture"));
+        assertEquals("Inference and deployment", taxonomy.familyOf("post-hoc calibration"));
+        assertEquals("Generative modelling", taxonomy.familyOf("diffusion model"));
+    }
+
+    @Test
+    void theThreeMisfiledTagsAreWhereTheyBelong() {
+        // reinforcement learning sat under Model-level approaches, which is how
+        // a concept-mapping paper tagged by term collision ended up filed as an
+        // architecture paper.
+        assertEquals("Training procedure", taxonomy.familyOf("reinforcement learning"));
+        assertEquals("Training objective", taxonomy.familyOf("regularization"));
+        assertEquals("Inference and deployment", taxonomy.familyOf("prompt engineering"));
+    }
+
+    @Test
+    void papersThatMeasureRatherThanInterveneHaveAFamily() {
+        // The gap that sent a live fairness corpus through the regrouping path:
+        // auditing, benchmarking and metric design had nowhere to go.
+        assertEquals("Problem framing and measurement", taxonomy.familyOf("bias auditing"));
+        assertEquals("Problem framing and measurement",
+                taxonomy.familyOf("benchmark construction"));
+        assertTrue(taxonomy.match("we run a fairness audit across race and sex subgroups")
+                .contains("bias auditing"));
+    }
+
+    @Test
+    void newVocabularyIsPhrasesRatherThanSingleWords() {
+        // The taxonomy's worst failure is a term collision - "reinforcement
+        // learning" on a pedagogy paper. A one-word tag collides far more
+        // readily than a phrase, so vocabulary added in C31 is phrases and
+        // acronyms only.
+        //
+        // Four single-word tags predate the rule. They stay because each is
+        // technical enough that an unrelated abstract will not contain it;
+        // unlike "curriculum" or "active", none has an everyday sense.
+        List<String> grandfathered =
+                List.of("resampling", "reweighting", "ensembling", "regularization");
+
+        List<String> risky = taxonomy.getKnownStrategies().stream()
+                .filter(tag -> !tag.contains(" ") && !tag.contains("-"))
+                .filter(tag -> !grandfathered.contains(tag))
+                .toList();
+
+        assertTrue(risky.isEmpty(), "single-word tags collide too easily: " + risky);
+    }
+
     @Test
     void findsAStrategyNamedInFull() {
         assertTrue(taxonomy.match("we use data augmentation to balance the classes")

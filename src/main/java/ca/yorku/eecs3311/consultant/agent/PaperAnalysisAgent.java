@@ -113,6 +113,36 @@ public class PaperAnalysisAgent extends Agent {
      * value, because a fabricated dataset name makes the F07 comparability check
      * silently wrong.
      */
+    /**
+     * The taxonomy's canonical tags, for the extraction prompt.
+     *
+     * <p>Until C31 the prompt asked for "the techniques used" and said nothing
+     * about the vocabulary, then {@code settleTags} discarded every suggestion
+     * the taxonomy did not recognise. The model was guessing at a closed list
+     * it had never been shown, so on a live set of twelve papers eleven came
+     * back marked uncertain — not because the papers did not fit, but because
+     * the model wrote reasonable tags in its own words and all of them were
+     * thrown away.
+     *
+     * <p>The list is read from the taxonomy rather than written out here, so a
+     * tag added to the vocabulary reaches the prompt with no second edit.
+     *
+     * @return the tags as a wrapped, comma-separated line
+     */
+    private String vocabulary() {
+        StringBuilder out = new StringBuilder();
+        int lineLength = 0;
+        for (String tag : taxonomy.getKnownStrategies()) {
+            if (lineLength > 68) {
+                out.append("\n                      ");
+                lineLength = 0;
+            }
+            out.append(tag).append(", ");
+            lineLength += tag.length() + 2;
+        }
+        return out.toString().replaceAll(", $", "");
+    }
+
     private PaperAnalysis extract(Parsed parsed) {
         PaperAnalysis analysis = new PaperAnalysis(parsed.paper());
 
@@ -133,8 +163,11 @@ public class PaperAnalysisAgent extends Agent {
                       Never guess a dataset, model or number that is not written there
                     - "method" is one or two sentences on what they actually did
                     - "metrics" lists only metrics the text names
-                    - "strategy_tags" names the techniques used, lowercase, 1 to 4 tags
-                    """.formatted(parsed.paper().getTitle(), parsed.text()));
+                    - "strategy_tags": 1 to 4 tags, chosen FROM THIS LIST ONLY,
+                      copied exactly. Choose none rather than one that does not
+                      apply; a wrong tag is worse than no tag.
+                      %s
+                    """.formatted(parsed.paper().getTitle(), parsed.text(), vocabulary()));
         } catch (LLMUnavailableException e) {
             // every field stays unknown; the record is still created and saved
             return analysis;

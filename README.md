@@ -70,7 +70,7 @@ Every diagram also links a rendered image beneath it.
 [`docs/stage2-report.pdf`](docs/stage2-report.pdf).
 
 All thirteen Stage 1 features are implemented and work from **both** the GUI and the CLI.
-None was dropped. All seven design patterns above are in running code. 573 tests pass; the
+None was dropped. All seven design patterns above are in running code. 594 tests pass; the
 four skipped tests are the live network and live API tests, disabled by default so that
 `mvn test` never spends money or depends on a third-party service.
 
@@ -98,7 +98,7 @@ JDK 17 — not a runtime-only install, which has no compiler and fails with the 
 
 ```bash
 export JAVA_HOME=/path/to/jdk-17
-mvn test          # 405 tests, offline, no API key needed
+mvn test          # 594 tests, offline, no API key needed
 ```
 
 ### The desktop app

@@ -197,8 +197,8 @@ class ResearchConsultantAgentTest {
                 tagged("3", "resampling"));
 
         assertEquals(2, root.getChildren().size(), root.getChildren().toString());
-        assertEquals(2, root.find("Data-level approaches").paperCount());
-        assertEquals(1, root.find("Generative approaches").paperCount());
+        assertEquals(2, root.find("Data").paperCount());
+        assertEquals(1, root.find("Generative modelling").paperCount());
         assertEquals(3, root.paperCount(), "every paper must be somewhere");
     }
 
@@ -230,8 +230,8 @@ class ResearchConsultantAgentTest {
                 .buildLandscape(List.of(tagged("1", "diffusion model"),
                         tagged("2", "resampling"), tagged("3", "data augmentation")), mine);
 
-        assertTrue(root.find("Generative approaches").isOwnApproach());
-        assertFalse(root.find("Data-level approaches").isOwnApproach());
+        assertTrue(root.find("Generative modelling").isOwnApproach());
+        assertFalse(root.find("Data").isOwnApproach());
     }
 
     @Test
@@ -251,14 +251,14 @@ class ResearchConsultantAgentTest {
     @Test
     void branchSummariesComeFromOneCallKeyedByFamilyName() {
         StrategyNode root = landscape(
-                "{\"Generative approaches\":\"they synthesise new examples\","
-                        + "\"Data-level approaches\":\"they change what is trained on\"}",
+                "{\"Generative modelling\":\"they synthesise new examples\","
+                        + "\"Data\":\"they change what is trained on\"}",
                 tagged("1", "diffusion model"), tagged("2", "resampling"),
                 tagged("3", "data augmentation"));
 
         assertEquals("they synthesise new examples",
-                root.find("Generative approaches").getMainIdea());
-        assertFalse(root.find("Data-level approaches").isMainIdeaMissing());
+                root.find("Generative modelling").getMainIdea());
+        assertFalse(root.find("Data").isMainIdeaMissing());
     }
 
     @Test
@@ -271,7 +271,7 @@ class ResearchConsultantAgentTest {
 
         assertEquals(1, root.paperCount());
         assertEquals(0, llm.callCount(), "the model must not be called for one paper");
-        assertTrue(root.find("Generative approaches").isMainIdeaMissing());
+        assertTrue(root.find("Generative modelling").isMainIdeaMissing());
     }
 
     @Test
@@ -284,7 +284,7 @@ class ResearchConsultantAgentTest {
                         myProject());
 
         assertEquals(3, root.paperCount(), "the structure is deterministic");
-        assertTrue(root.find("Generative approaches").isMainIdeaMissing(),
+        assertTrue(root.find("Generative modelling").isMainIdeaMissing(),
                 "the UI must be able to say the summary is unavailable");
     }
 
@@ -298,14 +298,14 @@ class ResearchConsultantAgentTest {
     @Test
     void summarizeBranchWorksOnALeafAndOnABranchAlike() {
         StrategyNode root = landscape(
-                "{\"Generative approaches\":\"they synthesise new examples\"}",
+                "{\"Generative modelling\":\"they synthesise new examples\"}",
                 tagged("1", "diffusion model"), tagged("2", "diffusion model"),
                 tagged("3", "diffusion model"));
         ResearchConsultantAgent agent =
                 new ResearchConsultantAgent(new ToolManager(new FakeLLMClient()));
 
         String branch = agent.summarizeBranch(root);
-        String leaf = agent.summarizeBranch(root.find("Generative approaches"));
+        String leaf = agent.summarizeBranch(root.find("Generative modelling"));
 
         assertTrue(branch.contains("3 paper(s)"), branch);
         assertTrue(leaf.contains("3 paper(s)"), leaf);
@@ -320,7 +320,7 @@ class ResearchConsultantAgentTest {
         ResearchConsultantAgent agent = new ResearchConsultantAgent(tools);
         StrategyNode root = agent.buildLandscape(List.of(tagged("1", "diffusion model")), mine);
 
-        assertTrue(agent.summarizeBranch(root.find("Generative approaches"))
+        assertTrue(agent.summarizeBranch(root.find("Generative modelling"))
                 .contains("your approach"));
     }
 
@@ -354,7 +354,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "data augmentation"));
 
-        StrategyNode family = root.find("Data-level approaches");
+        StrategyNode family = root.find("Data");
         assertEquals(2, family.getChildren().size(), family.getChildren().toString());
         assertEquals(2, family.find("Balanced oversampling").paperCount());
         assertEquals(1, family.find("Augmentation").paperCount());
@@ -372,7 +372,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "resampling"));
 
-        StrategyNode family = root.find("Data-level approaches");
+        StrategyNode family = root.find("Data");
         assertEquals(1, family.getPapers().size(),
                 "the unplaced paper must stay on the family, not disappear");
         assertEquals(3, family.paperCount());
@@ -390,7 +390,7 @@ class ResearchConsultantAgentTest {
                 tagged("3", "resampling"));
 
         assertEquals(3, root.paperCount(), "an out-of-range number must not add a paper");
-        StrategyNode family = root.find("Data-level approaches");
+        StrategyNode family = root.find("Data");
         assertEquals(1, family.find("One").paperCount());
         assertEquals(1, family.find("Two").paperCount());
     }
@@ -417,7 +417,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "resampling"));
 
-        StrategyNode family = root.find("Data-level approaches");
+        StrategyNode family = root.find("Data");
         assertTrue(family.isLeaf(), "a single group must leave the family flat: "
                 + family.getChildren());
         assertEquals(3, family.getPapers().size());
@@ -433,7 +433,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "diffusion model"));
 
-        assertTrue(root.find("Data-level approaches").isLeaf(),
+        assertTrue(root.find("Data").isLeaf(),
                 "two papers cannot support sub-branches without inventing structure");
     }
 
@@ -444,7 +444,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "resampling"));
 
-        assertTrue(root.find("Data-level approaches").isLeaf());
+        assertTrue(root.find("Data").isLeaf());
         assertEquals(3, root.paperCount());
     }
 
@@ -456,8 +456,8 @@ class ResearchConsultantAgentTest {
                         tagged("3", "resampling")),
                 myProject());
 
-        assertEquals(3, root.find("Data-level approaches").paperCount());
-        assertTrue(root.find("Data-level approaches").isLeaf());
+        assertEquals(3, root.find("Data").paperCount());
+        assertTrue(root.find("Data").isLeaf());
     }
 
     // --- placement when a paper carries tags from several families -----------
@@ -470,7 +470,7 @@ class ResearchConsultantAgentTest {
         StrategyNode root = landscape("{}",
                 tagged("1", "synthetic data generation", "transfer learning", "fine-tuning"));
 
-        assertEquals(1, root.find("Training-level approaches").paperCount(),
+        assertEquals(1, root.find("Training procedure").paperCount(),
                 "two training tags outweigh one data tag: " + root.getChildren());
     }
 
@@ -483,7 +483,7 @@ class ResearchConsultantAgentTest {
                 tagged("1", "data augmentation", "synthetic data generation",
                         "generative model", "conditional generation"));
 
-        assertEquals(1, first.find("Data-level approaches").paperCount(),
+        assertEquals(1, first.find("Data").paperCount(),
                 "a tie goes to the family declared first: " + first.getChildren());
         assertEquals(first.getChildren().toString(), again.getChildren().toString(),
                 "the same papers must give the same tree twice");
@@ -515,7 +515,7 @@ class ResearchConsultantAgentTest {
                 untagged("2"), untagged("3"), untagged("4"),
                 untagged("5"), untagged("6"));
 
-        assertEquals(null, root.find("Data-level approaches"),
+        assertEquals(null, root.find("Data"),
                 "a family explaining one paper in six must not head the tree: "
                         + root.getChildren());
         assertEquals(null, root.find(StrategyTaxonomy.UNCLASSIFIED));
@@ -530,15 +530,15 @@ class ResearchConsultantAgentTest {
                 tagged("1", "resampling"), tagged("2", "resampling"),
                 tagged("3", "data augmentation"), untagged("4"));
 
-        assertNotNull(root.find("Data-level approaches"),
+        assertNotNull(root.find("Data"),
                 "three of four papers fit, so the taxonomy is the right frame");
-        assertEquals(3, root.find("Data-level approaches").paperCount());
+        assertEquals(3, root.find("Data").paperCount());
     }
 
     @Test
     void aPaperWhoseTagsTheTaxonomyDoesNotStandBehindIsNotFiledUnderThem() {
         // measured live: an education paper on "curriculum" was tagged
-        // "curriculum learning" and filed under Training-level approaches.
+        // "curriculum learning" and filed under Training procedure.
         // classify() had already marked the tags uncertain; placement ignored it
         PaperAnalysis guessed = tagged("1", "curriculum learning");
         guessed.setTagsUncertain(true);
@@ -549,7 +549,7 @@ class ResearchConsultantAgentTest {
 
         assertEquals(1, root.find(StrategyTaxonomy.UNCLASSIFIED).paperCount(),
                 "an uncertain tag is not evidence of a family: " + root.getChildren());
-        assertEquals(3, root.find("Data-level approaches").paperCount());
+        assertEquals(3, root.find("Data").paperCount());
     }
 
     @Test
