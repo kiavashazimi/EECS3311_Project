@@ -1,8 +1,11 @@
 package ca.yorku.eecs3311.consultant.app;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import ca.yorku.eecs3311.consultant.domain.PaperRecord;
+import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -31,6 +34,25 @@ class PaperFeedPanelTest {
 
         assertEquals(once, PaperFeedPanel.staleHeading(once),
                 "asking twice must not stack prefixes");
+    }
+
+    @Test
+    void anAnalysedPaperIsMarkedInTheFeedRatherThanRemovedFromIt() {
+        // Removing it would make "Compare to my project" and "Check code"
+        // unreachable: both are only enabled for an analysed paper, which has
+        // to be selectable in this list to be selected at all.
+        RankedPaper entry = new RankedPaper(
+                new PaperRecord("1", "FairDiffusion", "arXiv cs.CV", "2026-02-01"), 90, "close", false);
+
+        String marked = PaperFeedPanel.rowText(entry, true);
+        String plain = PaperFeedPanel.rowText(entry, false);
+
+        assertTrue(marked.contains("FairDiffusion"),
+                "the paper stays in the list: " + marked);
+        assertTrue(marked.contains(PaperFeedPanel.ANALYSED_MARKER),
+                "and says it has been analysed: " + marked);
+        assertFalse(plain.contains(PaperFeedPanel.ANALYSED_MARKER),
+                "an unanalysed paper carries no marker: " + plain);
     }
 
     @Test

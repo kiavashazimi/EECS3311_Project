@@ -685,7 +685,7 @@ Composite absorbed it without modification, which is the pattern's own argument.
 
 ## 4. Changes and rationale
 
-Twenty-eight changes from the Stage 1 design, each as
+Twenty-nine changes from the Stage 1 design, each as
 **Original design → Implemented change → Reason → Impact**. Nothing here is a silent
 difference; every deviation found during implementation is listed.
 
@@ -984,6 +984,52 @@ so in that case the commit history is dropped from the snapshot silently. Distin
 "never had commits" from "could not read commits" is a design decision rather than a patch,
 and is left to Stage 3.
 
+**C29 — the digest announces a paper once, and will not vouch for an uncertain tag.**
+*Original:* Stage 1 F12 defines the digest as "newly discovered papers and any project
+changes", with no statement of what makes a paper new.
+*Change:* three parts. A paper is skipped when a previous digest already listed it or when
+the researcher has analysed it; the reported ids are persisted so the set survives a
+restart. Strategy tags are read from the batch *before* that filter runs, so an analysed
+paper still contributes its approaches even though it is no longer news. And a paper whose
+tags the classifier marked `tagsUncertain` contributes no tags at all. Both clients now mark
+an already-analysed paper in the discovery listing — `[analysed]` — rather than removing it.
+*Reason:* "new" was implemented as "new to the pending queue", which is not what the word
+means to a researcher. Discovery re-finds the same papers on every run and the queue is
+emptied by each digest, so a paper was announced again every week, including papers already
+read and analysed — exactly the papers the digest should be quietest about. The tag defect
+came from the same review: `tagsUncertain` is honoured by the solution landscape, which
+refuses to place such a paper (C26), but was ignored here. On the stored set of twelve
+concept-mapping papers, eleven are flagged uncertain and the only two surviving tags are
+`reinforcement learning` and `curriculum learning` — both term collisions, both on flagged
+papers, and both were being printed as fact into a prompt the model then reasons from.
+*Impact:* `ProjectMemory` gains a persisted `reportedPaperIds` set with `markReported` and
+`hasBeenReported`; `MemoryState` and `MemoryStore` carry it, and a file written before the
+field existed loads as "nothing reported", so no migration is needed. `DigestBuilder`
+filters, orders the tag read before the filter, and empties a queue holding nothing but seen
+papers so it cannot grow unbounded. Papers are **marked, not removed** from the listing:
+`comparePaper` and `checkCode` are enabled only for an analysed paper, so hiding analysed
+rows would make both permanently unreachable and would shift the row numbers `rc compare 2`
+depends on. Nine tests: two retargeted to the mixed case, seven new. No diagram changes —
+no class gained a public operation that the Stage 1 diagram shows.
+**Narrowing to be aware of:** the digest's approaches line now appears only when a batch
+holds both an analysed paper and an unseen one. A batch of nothing but analysed papers is
+correctly empty, and `Digest.isEmpty()` tests the paper list and project changes, not the
+tags. Because those tags come from papers the digest no longer lists, the line was renamed
+from *Approaches seen* to *Approaches you have already catalogued from this batch* in both
+clients and in the prompt: the old wording read as a description of the papers printed above
+it, which it is not. The alternative — reading tags after the filter — cannot work, since a
+paper that survives the filter is by definition one that has not been analysed and so has no
+tags at all.
+
+Tagging unanalysed papers from their text was considered and rejected. `StrategyTaxonomy.match()`
+is deterministic and free, so it could be run on an abstract, but on the twelve stored
+concept-mapping analyses it yields five tags against the method field's two, and all five are
+term collisions — `active learning` on a concept-map construction study, `curriculum learning`
+on a flipped-classroom paper. None of the twelve can be tagged correctly: the vocabulary is
+thirty-one machine-learning terms and the corpus is education research, which is the same
+mismatch C26 solved for the landscape by regrouping from the papers themselves. The digest
+has no such escape hatch, so printing nothing is its correct output here.
+
 ---
 
 ## 5. AI tools and collaboration log
@@ -1142,6 +1188,8 @@ Of the twenty, nineteen change implementation or test code; `e2d373b` adds docum
 | Every paper outside machine learning landed in one `Unclassified` bucket | User report | The adaptive half of F13 built as specified (C26) |
 | Three education papers mis-tagged `reinforcement learning`, `curriculum learning`, `active learning` by term collision | Live run | `tagsUncertain`, already set by the classifier but previously unused, now honoured during placement (C26) |
 | F10 reported three result files as removed while they were still on disk, then persisted a snapshot that discarded ten commits and five config entries | Probing the providers directly while preparing the F02/F10 demonstrations | Every available provider contributes to one merged snapshot (C28) |
+| The digest announced papers the researcher had already read and analysed, every week, because "new" meant "new to the pending queue" | Walking through the intended weekly workflow during review | A paper is reported once; the reported set is persisted (C29) |
+| The digest printed `reinforcement learning` and `curriculum learning` as approaches seen, from papers the classifier had flagged `tagsUncertain` | Inspecting the stored analyses: 11 of 12 are flagged, and both surviving tags are term collisions | `tagsUncertain` honoured in the digest as it already was in the landscape (C29) |
 
 ### Remaining limitations
 
@@ -1151,7 +1199,10 @@ rather than full PDFs; Semantic Scholar's rate limiting makes discovery take abo
 Period 1 has no commits. To those is added the one C28 does not fix: a failed `git` call and
 a project with no repository are indistinguishable to `readCommits()`, and removed commits
 are never reported, so a transient Git failure drops the commit history from the snapshot
-silently. Stage 3's deterministic testing and KUMA agent validation are out
+silently. The digest also has no cap on how many papers it narrates: every
+pending paper goes into one prompt with its full abstract, so sixty papers is roughly 98,000
+characters of abstract, and the 120-word limit then leaves about two words per paper. The
+structured list is unaffected; only the narrative thins out. Stage 3's deterministic testing and KUMA agent validation are out
 of scope here.
 
 ---

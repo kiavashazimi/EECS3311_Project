@@ -6,6 +6,7 @@ import ca.yorku.eecs3311.consultant.domain.RankedPaper;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Predicate;
 import javafx.application.Platform;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
@@ -36,8 +37,28 @@ public class PaperFeedPanel implements PaperFeedListener {
     /** Prefix that marks the list as older than what is shown beside it. */
     static final String STALE_PREFIX = "From your last discovery - ";
 
+    /**
+     * Marks a row whose paper already has an analysis.
+     *
+     * <p>Marked, not removed: "Compare to my project" and "Check code" are only
+     * enabled for an analysed paper, so dropping analysed rows from the feed
+     * would make both permanently unreachable, and would shift the row numbers
+     * that {@code rc compare 2} refers to.
+     */
+    static final String ANALYSED_MARKER = "[analysed]";
+
     /** True once an answer unrelated to these papers was shown next to them. */
     private boolean stale;
+
+    /**
+     * Answers whether a paper has been analysed, so the row can say so.
+     *
+     * <p>A predicate rather than a reference to the controller: the feed is a
+     * view and has no business reaching into application state, and the tests
+     * can mark whatever they like without building a controller. The default
+     * marks nothing, so a panel nobody configured behaves as it always did.
+     */
+    private Predicate<String> analysed = id -> false;
 
     public PaperFeedPanel() {
         list.setPlaceholder(new Label("No papers yet. Click \"Discover papers\"."));
@@ -83,6 +104,27 @@ public class PaperFeedPanel implements PaperFeedListener {
                 : Optional.of(ranked.get(index).paper());
     }
 
+    /**
+     * Sets how the panel decides a paper has been analysed.
+     *
+     * @param analysed given a paper id, true when an analysis exists for it
+     */
+    public void setAnalysedCheck(Predicate<String> analysed) {
+        this.analysed = analysed == null ? id -> false : analysed;
+        rebuildRows();
+    }
+
+    /**
+     * Redraws the rows so newly analysed papers pick up their marker.
+     *
+     * <p>Called after an analysis finishes. The rows are plain strings built
+     * once, so nothing would change on screen otherwise, and the paper the
+     * researcher just analysed would look untouched.
+     */
+    public void refreshAnalysedMarkers() {
+        rebuildRows();
+    }
+
     /** Runs {@code action} whenever the selection changes, to enable buttons. */
     public void onSelectionChanged(Runnable action) {
         list.getSelectionModel().selectedIndexProperty()
@@ -108,23 +150,56 @@ public class PaperFeedPanel implements PaperFeedListener {
                         ? " - NOT RANKED, " + reason
                         : ", most useful first"));
 
-        rows.clear();
         ranked.clear();
         ranked.addAll(papers);
         stale = false;
-        for (RankedPaper ranked : papers) {
-            PaperRecord p = ranked.paper();
-            StringBuilder row = new StringBuilder();
-            row.append(ranked.isUnranked() ? "  -  " : String.format("%3d  ", ranked.score()));
-            row.append(p.getTitle());
-            if (ranked.closestPriorWork()) {
-                row.append("   [closest prior work]");
-            }
-            row.append("\n       ").append(p.getDate()).append("  ").append(p.getVenue());
-            if (!ranked.why().isBlank()) {
-                row.append("\n       ").append(ranked.why());
-            }
-            rows.add(row.toString());
+        rebuildRows();
+    }
+
+    /**
+     * One row's text.
+     *
+     * <p>Static for the same reason {@code staleHeading} is: composing the row
+     * needs no {@code ListView}, so pulling it out lets it be checked without a
+     * started JavaFX toolkit.
+     *
+     * @param entry the ranked paper
+     * @param analysed whether an analysis already exists for it
+     * @return the two- or three-line cell text
+     */
+    static String rowText(RankedPaper entry, boolean analysed) {
+        PaperRecord p = entry.paper();
+        StringBuilder row = new StringBuilder();
+        row.append(entry.isUnranked() ? "  -  " : String.format("%3d  ", entry.score()));
+        row.append(p.getTitle());
+        if (entry.closestPriorWork()) {
+            row.append("   [closest prior work]");
+        }
+        if (analysed) {
+            row.append("   ").append(ANALYSED_MARKER);
+        }
+        row.append("\n       ").append(p.getDate()).append("  ").append(p.getVenue());
+        if (!entry.why().isBlank()) {
+            row.append("\n       ").append(entry.why());
+        }
+        return row.toString();
+    }
+
+    /**
+     * Rewrites every row from {@link #ranked}, keeping the selection.
+     *
+     * <p>Replacing the items clears the selection, and losing it after an
+     * analysis would disable "Compare to my project" on the very paper the
+     * researcher had just analysed.
+     */
+    private void rebuildRows() {
+        int selected = list.getSelectionModel().getSelectedIndex();
+        rows.clear();
+        for (RankedPaper entry : ranked) {
+            rows.add(rowText(entry, analysed.test(entry.paper().getId())));
+        }
+        if (selected >= 0 && selected < rows.size()) {
+            list.getSelectionModel().select(selected);
         }
     }
 

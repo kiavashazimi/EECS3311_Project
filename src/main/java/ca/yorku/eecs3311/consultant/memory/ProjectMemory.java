@@ -5,9 +5,12 @@ import ca.yorku.eecs3311.consultant.domain.PaperAnalysis;
 import ca.yorku.eecs3311.consultant.domain.PaperRecord;
 import ca.yorku.eecs3311.consultant.domain.ProjectProfile;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The researcher's project state: their profile, every paper analysed so far,
@@ -34,6 +37,7 @@ public final class ProjectMemory {
     private ContextSnapshot lastSnapshot = new ContextSnapshot();
     private List<String> lastListing = new ArrayList<>();
     private final List<PaperRecord> digestPending = new ArrayList<>();
+    private final Set<String> reportedPaperIds = new LinkedHashSet<>();
     private String lastDigestAt = "";
 
     private ProjectMemory() {
@@ -202,6 +206,48 @@ public final class ProjectMemory {
     }
 
     /**
+     * Records that a digest has listed these papers, so a later digest does
+     * not present them as new again.
+     *
+     * <p>Kept as ids rather than records: this set only ever answers "has this
+     * been shown?", it outlives the papers it names, and storing whole records
+     * would duplicate memory that already holds them.
+     *
+     * @param paperIds the ids just reported; null and blanks are ignored
+     */
+    public synchronized void markReported(Collection<String> paperIds) {
+        if (paperIds == null) {
+            return;
+        }
+        for (String id : paperIds) {
+            if (id != null && !id.isBlank()) {
+                reportedPaperIds.add(id);
+            }
+        }
+    }
+
+    /**
+     * @param paperId the paper to test
+     * @return true when some digest has already listed this paper. False for a
+     *     paper that was discovered but never reported, which is the state a
+     *     fresh queue is in
+     */
+    public synchronized boolean hasBeenReported(String paperId) {
+        return paperId != null && reportedPaperIds.contains(paperId);
+    }
+
+    /** @return every id a digest has reported, read-only, in report order */
+    public synchronized List<String> getReportedPaperIds() {
+        return Collections.unmodifiableList(new ArrayList<>(reportedPaperIds));
+    }
+
+    /** Replaces the reported set, for loading stored state. */
+    public synchronized void setReportedPaperIds(Collection<String> paperIds) {
+        reportedPaperIds.clear();
+        markReported(paperIds);
+    }
+
+    /**
      * @return when a digest last had something to report, or blank if none ever
      *     has. A digest that found nothing deliberately leaves this alone, so
      *     that "nothing new since X" names the last time there <em>was</em>
@@ -230,6 +276,7 @@ public final class ProjectMemory {
         lastSnapshot = new ContextSnapshot();
         lastListing = new ArrayList<>();
         digestPending.clear();
+        reportedPaperIds.clear();
         lastDigestAt = "";
     }
 }

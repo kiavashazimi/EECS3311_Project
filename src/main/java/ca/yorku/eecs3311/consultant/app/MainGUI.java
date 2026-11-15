@@ -125,6 +125,7 @@ public class MainGUI {
             }
         });
         feed.onSelectionChanged(this::refreshButtons);
+        feed.setAnalysedCheck(id -> controller.findAnalysis(id).isPresent());
 
         controller.loadStoredProject();
         showProfile(controller.getProfile());
@@ -378,7 +379,11 @@ public class MainGUI {
             }
         }
         if (!d.getStrategyHighlights().isEmpty()) {
-            b.append("\n\nApproaches seen: ")
+            // Named this way on purpose. These tags come from papers in the
+            // batch that the researcher has already analysed - which are
+            // exactly the papers the digest does not list. "Approaches seen"
+            // read as a description of the papers above it, which it is not.
+            b.append("\n\nApproaches you have already catalogued from this batch: ")
                     .append(String.join(", ", d.getStrategyHighlights()));
         }
         if (!d.getProjectChanges().isBlank()) {
@@ -798,6 +803,10 @@ public class MainGUI {
             Platform.runLater(() -> {
                 detail.setText(shown);
                 analyze.setDisable(false);
+                // the row must pick up its [analysed] marker now, not at the
+                // next discovery - otherwise the paper just analysed looks
+                // untouched beside the ones that were not
+                feed.refreshAnalysedMarkers();
                 refreshButtons();
             });
         }, "analyze-paper");

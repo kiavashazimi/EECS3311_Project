@@ -138,7 +138,10 @@ public class Cli {
         for (RankedPaper ranked : papers) {
             var p = ranked.paper();
             String score = ranked.isUnranked() ? "  -" : String.format("%3d", ranked.score());
-            out.println(String.format("%2d. [%s] %s", position++, score, p.getTitle()));
+            // the same marker the GUI feed carries: a re-discovered paper the
+            // researcher already analysed should not look like a fresh find
+            String seen = controller.findAnalysis(p.getId()).isPresent() ? "  [analysed]" : "";
+            out.println(String.format("%2d. [%s] %s%s", position++, score, p.getTitle(), seen));
             out.println("      " + p.getDate() + "  " + p.getVenue() + "  " + p.getUrl());
             if (!ranked.why().isBlank()) {
                 out.println("      why: " + ranked.why()
@@ -194,7 +197,10 @@ public class Cli {
             out.println();
         }
         if (!d.getStrategyHighlights().isEmpty()) {
-            out.println("Approaches seen: " + String.join(", ", d.getStrategyHighlights()));
+            // see MainGUI.showDigest: these tags are from the analysed papers
+            // in this batch, which are the ones not listed above
+            out.println("Approaches you have already catalogued from this batch: "
+                    + String.join(", ", d.getStrategyHighlights()));
             out.println();
         }
         if (!d.getProjectChanges().isBlank()) {

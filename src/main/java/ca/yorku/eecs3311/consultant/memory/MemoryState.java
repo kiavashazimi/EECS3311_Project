@@ -35,6 +35,8 @@ public class MemoryState {
      */
     private List<PaperRecord> digestPending = new ArrayList<>();
 
+    private List<String> reportedPaperIds = new ArrayList<>();
+
     private String lastDigestAt = "";
 
     /**
@@ -74,6 +76,15 @@ public class MemoryState {
     public void setDigestPending(List<PaperRecord> digestPending) {
         this.digestPending = digestPending == null
                 ? new ArrayList<>() : new ArrayList<>(digestPending);
+    }
+
+    public List<String> getReportedPaperIds() {
+        return reportedPaperIds;
+    }
+
+    public void setReportedPaperIds(List<String> reportedPaperIds) {
+        this.reportedPaperIds = reportedPaperIds == null
+                ? new ArrayList<>() : new ArrayList<>(reportedPaperIds);
     }
 
     public String getLastDigestAt() {

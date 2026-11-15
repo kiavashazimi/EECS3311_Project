@@ -79,10 +79,28 @@ public class DigestBuilder implements PaperFeedListener {
         Digest digest = new Digest(now);
 
         List<PaperRecord> pending = memory.getDigestPending();
+
+        // Tags are taken from the whole batch, before anything is filtered out.
+        // The only papers that carry tags are analysed ones, and analysed ones
+        // are exactly what the filter removes - reading tags afterwards would
+        // leave this line permanently empty.
+        List<String> highlights = highlightsFor(pending);
+
+        // "New" has to mean new to the researcher, not new to this queue.
+        // Discovery re-finds the same papers every run and the queue is cleared
+        // after each digest, so without this a paper is announced again every
+        // week, including papers already read and analysed.
+        List<PaperRecord> unseen = new ArrayList<>();
         for (PaperRecord paper : pending) {
+            if (!alreadySeen(paper)) {
+                unseen.add(paper);
+            }
+        }
+
+        for (PaperRecord paper : unseen) {
             digest.addPaper(paper);
         }
-        digest.setStrategyHighlights(highlightsFor(pending));
+        digest.setStrategyHighlights(highlights);
         digest.setProjectChanges(describeLatestScan(memory.getLastSnapshot()));
 
         if (digest.isEmpty()) {
@@ -92,6 +110,11 @@ public class DigestBuilder implements PaperFeedListener {
             // claiming a previous digest that never ran. The marker means "when
             // a digest last had something to report", which is the only reading
             // that makes "nothing new since" a useful sentence.
+            //
+            // The queue is still emptied: everything in it was filtered out as
+            // already seen, so keeping it would only re-filter the same papers
+            // on every future digest while the queue grew without bound.
+            memory.clearDigestPending();
             return digest;
         }
 
@@ -104,6 +127,7 @@ public class DigestBuilder implements PaperFeedListener {
 
         // cleared whether or not the narrative succeeded: these papers have
         // been listed, and repeating them in the next digest would be noise
+        memory.markReported(unseen.stream().map(PaperRecord::getId).toList());
         memory.clearDigestPending();
         memory.setLastDigestAt(now);
         return digest;
@@ -115,15 +139,34 @@ public class DigestBuilder implements PaperFeedListener {
      * <p>A paper nobody has analysed contributes nothing. Tagging it from its
      * title would put a guess in a report the researcher reads as a record of
      * what was found.
+     *
+     * <p>A paper whose tags the classifier marked uncertain contributes nothing
+     * either, for the same reason the solution landscape refuses to place one
+     * (C26): an uncertain tag is a guess, and printing it here states it as
+     * fact. On a set of concept-mapping papers the two tags that survived were
+     * {@code reinforcement learning} and {@code curriculum learning}, both from
+     * term collisions, and both on papers already flagged uncertain.
      */
     private List<String> highlightsFor(List<PaperRecord> papers) {
         Set<String> tags = new LinkedHashSet<>();
         for (PaperRecord paper : papers) {
             memory.findAnalysis(paper.getId())
+                    .filter(analysis -> !analysis.isTagsUncertain())
                     .map(PaperAnalysis::getStrategyTags)
                     .ifPresent(tags::addAll);
         }
         return new ArrayList<>(tags);
+    }
+
+    /**
+     * @param paper a paper waiting in the queue
+     * @return true when the researcher has already met this paper - a previous
+     *     digest listed it, or they analysed it, which they could only do after
+     *     seeing it
+     */
+    private boolean alreadySeen(PaperRecord paper) {
+        return memory.hasBeenReported(paper.getId())
+                || memory.findAnalysis(paper.getId()).isPresent();
     }
 
     /**
@@ -175,7 +218,9 @@ public class DigestBuilder implements PaperFeedListener {
 
                 New papers since the last digest:
                 %s
-                Strategy tags recorded for those of them that have been analysed: %s
+                Approaches the researcher has already catalogued from this same
+                batch, from papers they analysed and which are therefore not
+                listed above: %s
 
                 Their own project: %s
 

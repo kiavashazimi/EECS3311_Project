@@ -215,15 +215,78 @@ class DigestBuilderTest {
 
     @Test
     void thePromptCarriesTheAssembledFactsNotJustTheTitles() throws Exception {
+        // The analysed paper supplies the tags; the unanalysed one is what the
+        // digest actually announces. Tags are read before the already-seen
+        // filter runs, so an analysed paper still colours the batch it arrived
+        // with even though it is no longer news.
         memory.addPaperAnalysis(analysed("1", "First", "diffusion model"));
         builder.onNewPaper(paper("1", "First"));
+        builder.onNewPaper(paper("2", "Second"));
         llm.respondWith("a summary");
 
         builder.buildDigest();
 
         String prompt = llm.promptsSeen().get(0);
-        assertTrue(prompt.contains("First"), prompt);
+        assertTrue(prompt.contains("Second"), prompt);
         assertTrue(prompt.contains("diffusion model"), prompt);
+    }
+
+    @Test
+    void aPaperAlreadyAnalysedIsNotAnnouncedAsNew() throws Exception {
+        memory.addPaperAnalysis(analysed("1", "First", "diffusion model"));
+        builder.onNewPaper(paper("1", "First"));
+        builder.onNewPaper(paper("2", "Second"));
+        llm.respondWith("a summary");
+
+        Digest digest = builder.buildDigest();
+
+        assertEquals(1, digest.getNewPapers().size(), "only the unanalysed paper is new");
+        assertEquals("Second", digest.getNewPapers().get(0).getTitle());
+    }
+
+    @Test
+    void aPaperIsAnnouncedOnceAndNotAgainAfterRediscovery() throws Exception {
+        builder.onNewPaper(paper("1", "First"));
+        llm.respondWith("a summary");
+        assertEquals(1, builder.buildDigest().getNewPapers().size());
+
+        // discovery re-finds the same paper a week later, as it always does
+        builder.onNewPaper(paper("1", "First"));
+        builder.onNewPaper(paper("2", "Second"));
+        llm.respondWith("a summary");
+        Digest second = builder.buildDigest();
+
+        assertEquals(1, second.getNewPapers().size(),
+                "the re-found paper was already reported: " + second.getNewPapers());
+        assertEquals("Second", second.getNewPapers().get(0).getTitle());
+    }
+
+    @Test
+    void aQueueOfNothingButSeenPapersIsEmptiedRatherThanLeftToGrow() throws Exception {
+        memory.addPaperAnalysis(analysed("1", "First", "diffusion model"));
+        builder.onNewPaper(paper("1", "First"));
+
+        assertTrue(builder.buildDigest().isEmpty(), "nothing in the queue was new");
+        assertEquals(0, builder.pendingCount(),
+                "the seen paper must not sit in the queue being re-filtered forever");
+        assertEquals(0, llm.callCount(), "an empty digest costs no model call");
+    }
+
+    @Test
+    void anUncertainTagIsNotListedAsAnApproachThatWasSeen() throws Exception {
+        // The landscape refuses to place a paper whose tags are uncertain
+        // (C26). Printing those same tags here would state the guess as fact.
+        PaperAnalysis uncertain = analysed("1", "First", "reinforcement learning");
+        uncertain.setTagsUncertain(true);
+        memory.addPaperAnalysis(uncertain);
+        builder.onNewPaper(paper("1", "First"));
+        builder.onNewPaper(paper("2", "Second"));
+        llm.respondWith("a summary");
+
+        Digest digest = builder.buildDigest();
+
+        assertTrue(digest.getStrategyHighlights().isEmpty(),
+                "an uncertain tag is a guess: " + digest.getStrategyHighlights());
     }
 
     @Test

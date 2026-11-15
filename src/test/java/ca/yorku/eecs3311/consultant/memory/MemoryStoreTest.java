@@ -199,6 +199,41 @@ class MemoryStoreTest {
     }
 
     @Test
+    void thePapersADigestHasReportedSurviveARestart() throws IOException {
+        // The set is what stops a re-discovered paper being announced as new
+        // again. Held only in memory it would reset every launch, and the first
+        // digest after a restart would repeat everything.
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        memory.markReported(List.of("2412.20374v2", "2501.11111v1"));
+
+        MemoryStore store = new MemoryStore(tempDir);
+        store.save(memory);
+
+        memory.clear();
+        assertTrue(store.load(memory));
+        assertTrue(memory.hasBeenReported("2412.20374v2"));
+        assertTrue(memory.hasBeenReported("2501.11111v1"));
+        assertFalse(memory.hasBeenReported("9999.00000v1"));
+    }
+
+    @Test
+    void aStoredFileWithNoReportedSetLoadsAsNoneReported() throws IOException {
+        // Files written before the set existed have no such field. Jackson
+        // leaves it at its default, which must mean "nothing reported yet"
+        // rather than failing the load of an otherwise good project.
+        ProjectMemory memory = ProjectMemory.getInstance();
+        memory.clear();
+        MemoryStore store = new MemoryStore(tempDir);
+        Files.writeString(store.getFile(),
+                "{\"profile\":{\"researchQuestion\":\"does X help\"},\"papers\":[]}");
+
+        assertTrue(store.load(memory));
+        assertEquals("does X help", memory.getProfile().getResearchQuestion());
+        assertFalse(memory.hasBeenReported("anything"));
+    }
+
+    @Test
     void aScanThatFoundNothingIsStillStored() throws IOException {
         // "we looked and there was nothing" is a finding; "we never looked" is
         // not. Only the second may be dropped from the file.

@@ -98,6 +98,7 @@ public class MemoryStore {
         state.setLastSnapshot(memory.getLastSnapshot());
         state.setLastListing(memory.getLastListing());
         state.setDigestPending(memory.getDigestPending());
+        state.setReportedPaperIds(memory.getReportedPaperIds());
         state.setLastDigestAt(memory.getLastDigestAt());
         mapper.writeValue(getFile().toFile(), state);
         // this store wrote the file, so its memory is now the authority for it
@@ -131,6 +132,7 @@ public class MemoryStore {
             }
             memory.saveLastListing(state.getLastListing());
             memory.setDigestPending(state.getDigestPending());
+            memory.setReportedPaperIds(state.getReportedPaperIds());
             memory.setLastDigestAt(state.getLastDigestAt());
             if (state.getLastSnapshot() != null) {
                 // absent means no import has ever happened; clear() already

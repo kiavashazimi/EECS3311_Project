@@ -1047,6 +1047,35 @@ class CliTest {
 
     @Test
     void digestListsTheApproachesOfPapersThatHaveBeenAnalysed() {
+        // Two papers: one analysed, one not. The analysed one supplies the
+        // approaches; the other is what the digest announces. A digest holding
+        // only the analysed paper has nothing new to report, which is covered
+        // by digestDoesNotAnnounceAPaperTheResearcherAlreadyAnalysed.
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"),
+                paper("2501.11111v1", "SecondPaper"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"},{\"id\":\"2501.11111v1\",\"score\":60,"
+                + "\"why\":\"related\"}]}");
+        cli.run(new String[] {"discover"});
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2412.20374v2"});
+        out.reset();
+
+        llm.respondWith("a summary");
+        cli.run(new String[] {"digest"});
+
+        assertTrue(stdout().contains("already catalogued from this batch"),
+                "the label must say where the tags came from, since those papers"
+                        + " are not the ones listed: " + stdout());
+        assertTrue(stdout().contains("diffusion model"), stdout());
+        assertTrue(stdout().contains("SecondPaper"), stdout());
+    }
+
+    @Test
+    void rediscoveringAnAnalysedPaperMarksItRatherThanHidingIt() {
+        // It stays in the listing and keeps its row number, because 'rc compare
+        // 1' and 'rc repo 1' both need an analysed paper to refer to.
         givenAProfile();
         source.returning(paper("2412.20374v2", "FairDiffusion"));
         llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
@@ -1056,11 +1085,31 @@ class CliTest {
         cli.run(new String[] {"analyze", "2412.20374v2"});
         out.reset();
 
-        llm.respondWith("a summary");
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"}]}");
+        cli.run(new String[] {"discover"});
+
+        assertTrue(stdout().contains("FairDiffusion"), stdout());
+        assertTrue(stdout().contains("[analysed]"),
+                "a re-found paper must say it has already been read: " + stdout());
+        assertTrue(stdout().contains(" 1. "), "and keep its row number: " + stdout());
+    }
+
+    @Test
+    void digestDoesNotAnnounceAPaperTheResearcherAlreadyAnalysed() {
+        givenAProfile();
+        source.returning(paper("2412.20374v2", "FairDiffusion"));
+        llm.respondWith("{\"ranked\":[{\"id\":\"2412.20374v2\",\"score\":90,"
+                + "\"why\":\"close\"}]}");
+        cli.run(new String[] {"discover"});
+        llm.respondWith(ANALYSIS_REPLY);
+        cli.run(new String[] {"analyze", "2412.20374v2"});
+        out.reset();
+
         cli.run(new String[] {"digest"});
 
-        assertTrue(stdout().contains("Approaches seen"), stdout());
-        assertTrue(stdout().contains("diffusion model"), stdout());
+        assertFalse(stdout().contains("FairDiffusion"),
+                "it was read and analysed, so announcing it as new is noise: " + stdout());
     }
 
     @Test
