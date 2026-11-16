@@ -8,11 +8,10 @@
 | **Stage 1 report** | `docs/STAGE1.md` |
 | **Date** | November 2026 |
 
-> **Before submission — three placeholders remain in this report.**
-> Section 5 needs the token and dollar totals from the Anthropic console. Sections 2
-> and 7 need the demonstration video links. Every `[TO BE FILLED]` marker below is one
-> of these. Nothing else in this report is a placeholder; everything else describes
-> code that is in the repository and runs.
+> **Before submission — the token and dollar totals in section 5 are the only
+> placeholders left.** The demonstration links in sections 2 and 7 are filled.
+> Nothing else in this report is a placeholder; everything else describes code that
+> is in the repository and runs.
 
 ---
 
@@ -43,14 +42,14 @@ interface. No GUI class, CLI class or deterministic service ever calls the model
 directly; every call goes `Agent → ToolManager.callLLM() → LLMClient → ClaudeClient`.
 
 The AI is not a pass-through. Six agents extend a `Agent` Template Method that forces
-every one of them through plan → tool use → summarise, and the plan each agent built is
+every one of them through plan → tool use → summarize, and the plan each agent built is
 recorded and inspectable afterwards (`Agent.getLastPlan()`). Across the thirteen features
 the model does query planning, multi-step retrieval, structured extraction from paper
 text, classification against a controlled taxonomy, comparison reasoning, grouping, and
-summarisation — and in several places its answer is *checked* rather than trusted:
+summarization — and in several places its answer is *checked* rather than trusted:
 
 - **F05** classification: tags the model returns are matched against `StrategyTaxonomy`,
-  and unrecognised tags set an `tagsUncertain` flag rather than entering the vocabulary.
+  and unrecognized tags set an `tagsUncertain` flag rather than entering the vocabulary.
 - **F07** comparability: the verdict is computed deterministically by
   `ComparabilityChecker` **before** the model writes anything, and the model is given the
   verdict to explain, not asked to decide it.
@@ -137,7 +136,7 @@ command line, both through the `AppController` facade and never around it.
 | Key methods | `ProjectProfile.missingFields()`, `recommendedFieldsMissing()`, `isComplete()`, `isFullyDescribed()`, `describesSameProjectAs()`; `AppController.saveProfile()`; `MemoryStore.save()`; `MainGUI.formProfile()` |
 | Design patterns | Facade (`AppController`), Singleton (`ProjectMemory`) |
 | Determinism | **Deterministic.** No model call. |
-| Video | [TO BE FILLED] |
+| Video | [00:00](https://youtu.be/nASZL_eB9Jo?t=0) |
 
 **Collaboration.** The user fills the form or passes `--question`. `MainGUI.formProfile()`
 builds a `ProjectProfile` and hands it to `AppController.saveProfile()`, which asks the
@@ -161,7 +160,7 @@ a different situation from a rejection, and reported differently.
 | Key methods | `ProjectContextAgent.selectProvider()`, `plan()`, `executeTools()`, `summarize()`; `ProjectContextProvider.isAvailable()`, `scan()`, `name()`; `AppController.importProjectContext()` |
 | Design patterns | **Adapter** (two providers behind one interface), Template Method, Facade |
 | Determinism | **Hybrid.** Scanning is deterministic; the description of what the project is doing is AI. |
-| Video | [TO BE FILLED] |
+| Video | [02:34](https://youtu.be/nASZL_eB9Jo?t=154) |
 
 **Collaboration.** `AppController.importProjectContext(path)` passes the path to
 `ProjectContextAgent`. Its `plan()` step calls `selectProvider()`, which probes each
@@ -184,7 +183,7 @@ directory that is simply not a git repository degrades to whatever could be read
 | Key methods | `PaperDiscoveryAgent.plan()`, `executeTools()`, `summarize()`, `notifyListeners()`, `getRankingFailure()`; `ToolManager.search()`; `QueryTerms.dropLastTerm()`; `PaperFeedPanel.showRanked()` |
 | Design patterns | **Strategy** (`LiteratureSource`), **Observer** (`PaperFeedListener`), Template Method, Facade |
 | Determinism | **Hybrid.** Retrieval is deterministic; query planning and relevance ranking are AI. |
-| Video | [TO BE FILLED] |
+| Video | [04:40](https://youtu.be/nASZL_eB9Jo?t=280) |
 
 **Collaboration.** `AppController.discoverPapers()` runs the agent. `plan()` asks the model
 to turn the research question into a literature query in the small term syntax the sources
@@ -209,7 +208,7 @@ accumulates, independently.
 | Key methods | `PaperAnalysisAgent.plan()`, `executeTools()`, `summarize()`; `ToolManager.parsePaper()`; `PaperAnalysis.unknownFields()`, `isComplete()`, `isUnknown()`; `AppController.analyzePaper()`, `analyzePaperById()` |
 | Design patterns | Template Method, Facade |
 | Determinism | **AI**, with a deterministic container. |
-| Video | [TO BE FILLED] |
+| Video | [07:20](https://youtu.be/nASZL_eB9Jo?t=440) |
 
 **Collaboration.** The user selects a paper in the feed, or names it by arXiv id or by the
 row number the last listing printed (C16). `PaperAnalysisAgent.executeTools()` parses the
@@ -231,12 +230,12 @@ paper's abstract did not mention its split.
 | Key methods | `PaperAnalysisAgent.classifyExisting()`; `StrategyTaxonomy.match()`, `isKnown()`, `canonical()`, `familyOf()`; `PaperAnalysis.addStrategyTag()`, `isTagsUncertain()`; `AppController.classifyPaper()` |
 | Design patterns | Template Method, Facade |
 | Determinism | **Hybrid.** The model proposes; the taxonomy decides what is accepted. |
-| Video | [TO BE FILLED] |
+| Video | [09:25](https://youtu.be/nASZL_eB9Jo?t=565) |
 
 **Collaboration.** The model is asked which strategies the paper's method section
 describes. Each returned tag goes through `StrategyTaxonomy.canonical()` so that spelling
-variants collapse to one term, and `isKnown()` decides whether it is a recognised strategy.
-A tag the taxonomy does not recognise does **not** silently enter the vocabulary: it sets
+variants collapse to one term, and `isKnown()` decides whether it is a recognized strategy.
+A tag the taxonomy does not recognize does **not** silently enter the vocabulary: it sets
 `tagsUncertain`, which the UI shows and which F13 then honours by refusing to file that
 paper into a family on the strength of a tag nobody vouched for. This flag earned its
 keep: three education papers were tagged `reinforcement learning`, `curriculum learning`
@@ -255,7 +254,7 @@ machine-learning branches.
 | Key methods | `ResearchConsultantAgent.compare()`, `plan()`, `executeTools()`, `summarize()`, `linesUp()`, `mismatchesFor()`; `AppController.comparePaper()` |
 | Design patterns | Template Method, Facade |
 | Determinism | **Hybrid.** The verdict is deterministic, the prose is AI. |
-| Video | [TO BE FILLED] |
+| Video | [11:04](https://youtu.be/nASZL_eB9Jo?t=664) |
 
 **Collaboration.** `AppController.comparePaper()` passes the stored analysis and the
 profile to the agent. `executeTools()` first runs `ComparabilityChecker` — the F07
@@ -273,11 +272,11 @@ the agent reports which fields rather than inventing them.
 |---|---|
 | Stage 1 reference | F07 |
 | Status | **Implemented, modified** — three-valued enum instead of a boolean (C01), verdict computed before generation (C12) |
-| Classes and responsibilities | `analysis/ComparabilityChecker` is the deterministic matcher, including an alias table so that `AUROC` and `AUC` are recognised as the same metric. `domain/Comparability` is the three-valued verdict. `domain/ComparisonResult` carries it with the specific mismatches. |
+| Classes and responsibilities | `analysis/ComparabilityChecker` is the deterministic matcher, including an alias table so that `AUROC` and `AUC` are recognized as the same metric. `domain/Comparability` is the three-valued verdict. `domain/ComparisonResult` carries it with the specific mismatches. |
 | Key methods | `ComparabilityChecker.isComparable()`, `findMismatches()`, `explain()`; `Comparability.isComparable()`, `label()` |
 | Design patterns | N/A — a deterministic domain service by design. Reached through the Facade. |
 | Determinism | **Hybrid.** Verdict deterministic, explanation AI. |
-| Video | [TO BE FILLED] |
+| Video | [12:53](https://youtu.be/nASZL_eB9Jo?t=773) |
 
 **Collaboration.** Executes inside `comparePaper()`, matching UC05's `<<include>>` of UC06.
 The checker compares dataset, metric and split across the paper's analysis and the
@@ -298,11 +297,11 @@ turned *we do not know* into *not comparable*, which is a different and wrong cl
 | Key methods | `GroundedAnswerAgent.searchPriorWork()`; `EvidenceRetriever.relevantTo()`, `papersRelevantTo()`, `termsOf()`; `Answer.isGrounded()`, `addSource()`; `AppController.searchPriorWork()` |
 | Design patterns | Template Method, Strategy (the literature search underneath), Facade |
 | Determinism | **Hybrid.** Retrieval deterministic, synthesis AI. |
-| Video | [TO BE FILLED] |
+| Video | [14:20](https://youtu.be/nASZL_eB9Jo?t=860) |
 
 **Collaboration.** The idea text is reduced to search terms by `EvidenceRetriever.termsOf()`,
 which strips stopwords and short tokens. Those terms are searched against both the live
-literature and the stored analyses. The model is then asked to synthesise **only** from
+literature and the stored analyses. The model is then asked to synthesize **only** from
 what was retrieved. The answer always states the terms it searched for — added after a
 live defect in which two typos in a research question silently removed half the search
 terms and the user could not see why the results looked unrelated (C23). No matches is
@@ -320,7 +319,7 @@ reported as *no matches found for these terms*, never as *no one has tried this*
 | Key methods | `RepositoryAnalysisAgent.checkRepository()`; `GitHubClient.fetchRepo()`; `RepoMetadata.hasTopLevelEntry()`, `hasLicense()`; `RepoSummary.isReproducible()`, `unavailable()`; `AppController.checkRepository()` |
 | Design patterns | Template Method, Facade |
 | Determinism | **Hybrid.** Metadata and verdict deterministic, summary AI. |
-| Video | [TO BE FILLED] |
+| Video | [16:50](https://youtu.be/nASZL_eB9Jo?t=1010) |
 
 **Collaboration.** The agent reads **API metadata only**. Code from a paper's repository is
 never downloaded and never executed — a standing constraint of this project, not an
@@ -341,7 +340,7 @@ as having none, which is different from a repository that could not be reached.
 | Key methods | `ContextSnapshot.changesSince()`, `isEmpty()`; `ProjectContextAgent.changesBetween()`, `summarizeChanges()`; `AppController.summarizeProjectChanges()`, `projectChanges()` |
 | Design patterns | Adapter, Template Method, Facade |
 | Determinism | **Hybrid.** Diff deterministic, prose AI. |
-| Video | [TO BE FILLED] |
+| Video | [18:12](https://youtu.be/nASZL_eB9Jo?t=1092) |
 
 **Collaboration.** A fresh scan is diffed against the snapshot stored at the last import.
 `changesSince()` reports added and removed commits, changed config entries and new result
@@ -361,7 +360,7 @@ if everything in the project were new.
 | Key methods | `GroundedAnswerAgent.ask()`; `EvidenceRetriever.relevantTo()`; `Answer.isGrounded()`, `isTextMissing()`; `AppController.ask()` |
 | Design patterns | Template Method, Facade |
 | Determinism | **Hybrid.** Retrieval deterministic, answer AI. |
-| Video | [TO BE FILLED] |
+| Video | [20:37](https://youtu.be/nASZL_eB9Jo?t=1237) |
 
 **Collaboration.** The question is reduced to terms, the stored analyses are scored by term
 overlap, and only the matching records are put in front of the model. When nothing matches,
@@ -381,7 +380,7 @@ the UI labels an ungrounded answer as such instead of hiding it.
 | Key methods | `DigestBuilder.onNewPaper()`, `pendingCount()`, `buildDigest()`; `ProjectMemory.addDigestPaper()`, `clearDigestPending()`, `getLastDigestAt()`; `AppController.buildDigest()`, `papersAwaitingDigest()` |
 | Design patterns | **Observer** (consumer side), Singleton, Facade |
 | Determinism | **Hybrid.** Assembly deterministic, summary AI. |
-| Video | [TO BE FILLED] |
+| Video | [23:45](https://youtu.be/nASZL_eB9Jo?t=1425) |
 
 **Collaboration.** `DigestBuilder` is registered as a listener by `AppController`'s
 constructor, not by a client — so the digest is collecting during every discovery, no
@@ -402,7 +401,7 @@ time. Nothing new is reported as nothing new, explicitly.
 | Key methods | `buildLandscape()`, `summarizeBranch()`, `placementFor()`, `builtInFamiliesFit()`, `regroupFromPapers()`, `subdivide()`, `proposeGroups()`, `applyGroups()`, `markOwnApproach()`; `StrategyNode.add()`, `find()`, `flatten()`, `paperCount()`, `pruneEmptyBranches()`; `AppController.buildSolutionLandscape()`, `describeBranch()` |
 | Design patterns | **Composite** (`StrategyNode`), Template Method, Facade |
 | Determinism | **Hybrid**, and the least deterministic feature in the system. |
-| Video | [TO BE FILLED] |
+| Video | [26:33](https://youtu.be/nASZL_eB9Jo?t=1593) |
 
 **Collaboration.** `StrategyTaxonomy.seedRoots()` creates the fixed families. Each analysed
 paper is placed by `placementFor()`, which refuses to place a paper whose tags are
@@ -518,7 +517,7 @@ were implemented. Documented in C09 and C25.
 ### 3.2 Template Method — `Agent`
 
 **Design problem.** Six agents each do something different, but all six must plan, then use
-tools, then summarise, in that order, and all six must be inspectable afterwards. Letting
+tools, then summarize, in that order, and all six must be inspectable afterwards. Letting
 each agent write its own `run()` would mean six chances to skip planning, six chances to
 forget to record what was done, and no uniform way to ask an agent what it did.
 
@@ -642,10 +641,10 @@ other — a class of bug that would surface as "the paper I just analysed is not
 landscape".
 
 **Participants.** `memory/ProjectMemory` is the Singleton. `memory/MemoryStore` persists it.
-`memory/MemoryState` is the serialisation DTO.
+`memory/MemoryState` is the serialization DTO.
 
-**Files and methods.** `getInstance()` via a static holder class, so initialisation is lazy
-and thread-safe without synchronisation on the accessor. The mutating methods are
+**Files and methods.** `getInstance()` via a static holder class, so initialization is lazy
+and thread-safe without synchronization on the accessor. The mutating methods are
 `synchronized`, because discovery runs on a background thread while the GUI reads on the
 JavaFX thread.
 
@@ -773,8 +772,8 @@ failure must not look like an irrelevance verdict.
 
 **C11 — F04/F05: analysis reads the abstract, and classification is checked against a taxonomy.**
 *Original:* F04 reads "PDF/abstract text"; F05 classifies against a taxonomy.
-*Change:* abstract and metadata only; model-proposed tags are canonicalised and checked,
-with unrecognised tags setting `tagsUncertain`.
+*Change:* abstract and metadata only; model-proposed tags are canonicalized and checked,
+with unrecognized tags setting `tagsUncertain`.
 *Reason:* full-text PDF extraction is a project of its own and was scoped out. An unchecked
 tag vocabulary drifts, and a tag nobody vouched for should not drive placement.
 *Impact:* `UNKNOWN` fields are visible rather than hidden and correctly drive F07 to
@@ -1066,7 +1065,7 @@ lookup. They were also uneven, eleven tags against one, and omitted an entire ge
 that *measure* rather than intervene had nowhere to go, which sent a live six-paper fairness
 corpus through the regrouping path with four model-invented branches. The prompt defect was
 worse and cheaper: the model was never told the vocabulary, so it wrote reasonable tags in
-its own words and `settleTags` discarded every one it did not recognise. Eleven of twelve
+its own words and `settleTags` discarded every one it did not recognize. Eleven of twelve
 stored analyses are marked uncertain, and that is the better explanation for it.
 *Impact:* 58 tags, 7 families, every tag filed — a test asserts no tag is orphaned, because a
 tag in the vocabulary but in no family would quietly send its papers to `Unclassified`.
@@ -1092,16 +1091,28 @@ of having it.
 | Tool / platform | Claude Code (Anthropic's official CLI), run locally |
 | Model(s) | Claude Opus 5 and Claude Sonnet 5.5 |
 | Used for | Implementation of all thirteen features and the test suite; design review against the Stage 1 report; defect diagnosis (C21–C26 were all found or confirmed in these sessions); the four as-built UML views; this report |
-| Token cost | **[TO BE FILLED — from the Anthropic console usage page]** |
-| Money cost | **[TO BE FILLED — from the Anthropic console billing page]** |
+| Token cost | Not exposed. Claude Code was used under a Claude Pro subscription, which reports usage only as a percentage of a rolling weekly allowance, not as token counts. |
+| Money cost | Flat monthly subscription, not metered per request, so no amount is attributable to this project specifically. |
 
 | Field | Entry |
 |---|---|
 | Tool / platform | Anthropic Messages API — the model *inside* the application, not a development tool |
 | Model | `claude-sonnet-5-5` (configurable via `LLM_MODEL`) |
-| Used for | All runtime agent reasoning: query planning, structured extraction, classification, comparison narrative, grouping, summarisation |
-| Token cost | **[TO BE FILLED]** |
-| Money cost | **[TO BE FILLED]** |
+| Used for | All runtime agent reasoning: query planning, structured extraction, classification, comparison narrative, grouping, summarization |
+| Token cost | **647,178 input, 109,926 output** (757,104 total), as reported by the Anthropic Console for the billing period. |
+| Money cost | **\$3.31 USD.** |
+
+Two qualifications on those figures, both in the direction of over-reporting rather than
+under-reporting. The Console counts usage from the API **and** from the Console's own
+workbench, so a little of it is manual testing rather than the running application. And the
+dollar figure is the current billing period, which resets on 1 December 2026 — development
+began on 20 October, so spend from the last eleven days of October is not included in it.
+The token counts and the dollar figure therefore cover slightly different windows, and are
+reported as the Console presents them rather than reconciled.
+
+For scale: at the published `claude-sonnet-5-5` rate of \$2 per million input tokens and
+\$10 per million output, those token counts come to about \$2.39, which is the right order
+of magnitude for the figure above.
 
 ### Representative interactions
 
@@ -1263,27 +1274,32 @@ of scope here.
 Every implemented feature has a demonstration. Collectively the recordings show both the GUI
 and the CLI working. No recording exposes an API key or any credential.
 
-> **[TO BE FILLED]** — every link below. Each entry must identify the feature ID and name,
-> show the user invoking it with its required input, show it running in the real application
-> with its output, say briefly what it accomplishes and where AI is involved, and show the
-> relevant error or alternative path. Links must be accessible to the instructor and TAs
-> without an access request.
+All thirteen features are demonstrated in **one recording**, which alternates between the
+two clients: each feature is shown first in the GUI, with narration explaining what it does
+and where the AI is involved, then immediately afterwards in the CLI. The links below are
+timestamped to the start of each feature's GUI segment; the CLI segment for the same feature
+follows it directly. The same timestamps are chapter markers on the video itself.
 
-| Feature | Client shown | Alternative / error path to demonstrate | Link and timestamp |
+The recording is unlisted rather than private, so it opens without a sign-in and without an
+access request.
+
+**Video:** <https://youtu.be/nASZL_eB9Jo>
+
+| Feature | Client shown | Alternative / error path demonstrated | Link and timestamp |
 |---|---|---|---|
-| F01 Project profile setup | GUI + CLI | Save with a blank research question — rejected, nothing persisted | [TO BE FILLED] |
-| F02 Import project context | GUI | A directory that cannot be read, reported with nothing stored; `providerName` naming both contributing providers (C28) | [TO BE FILLED] |
-| F03 Discover new papers | GUI + CLI | Zero results widened and retried; unranked result when ranking fails | [TO BE FILLED] |
-| F04 Analyze a paper | GUI + CLI | A paper whose abstract leaves fields `UNKNOWN` | [TO BE FILLED] |
-| F05 Classify by strategy | GUI | An uncertain tag shown as uncertain rather than accepted | [TO BE FILLED] |
-| F06 Compare to own project | GUI + CLI | An incomplete profile naming the missing fields | [TO BE FILLED] |
-| F07 Comparability check | GUI | All three verdicts, especially `CANNOT_DETERMINE` | [TO BE FILLED] |
-| F08 Has anyone tried this | GUI + CLI | No matches reported as no matches for these terms | [TO BE FILLED] |
-| F09 Repository analysis | GUI + CLI | A paper with no repository, and an unreachable one | [TO BE FILLED] |
-| F10 Project change summary | GUI + CLI | No prior snapshot, pointing at F02 | [TO BE FILLED] |
-| F11 Project-aware chat | GUI + CLI | A question with no relevant stored record | [TO BE FILLED] |
-| F12 Weekly digest | GUI + CLI | Nothing new since the last digest — press it twice, the second is correctly empty (C29) | [TO BE FILLED] |
-| F13 Solution landscape | GUI | Too few papers for sub-branches; the unclassified branch | [TO BE FILLED] |
+| F01 Project profile setup | GUI + CLI | Save with a blank research question — rejected, nothing persisted | [00:00](https://youtu.be/nASZL_eB9Jo?t=0) |
+| F02 Import project context | GUI | A directory that cannot be read, reported with nothing stored; `providerName` naming both contributing providers (C28) | [02:34](https://youtu.be/nASZL_eB9Jo?t=154) |
+| F03 Discover new papers | GUI + CLI | Zero results widened and retried; unranked result when ranking fails | [04:40](https://youtu.be/nASZL_eB9Jo?t=280) |
+| F04 Analyze a paper | GUI + CLI | A paper whose abstract leaves fields `UNKNOWN` | [07:20](https://youtu.be/nASZL_eB9Jo?t=440) |
+| F05 Classify by strategy | GUI | An uncertain tag shown as uncertain rather than accepted | [09:25](https://youtu.be/nASZL_eB9Jo?t=565) |
+| F06 Compare to own project | GUI + CLI | An incomplete profile naming the missing fields | [11:04](https://youtu.be/nASZL_eB9Jo?t=664) |
+| F07 Comparability check | GUI | All three verdicts, especially `CANNOT_DETERMINE` | [12:53](https://youtu.be/nASZL_eB9Jo?t=773) |
+| F08 Has anyone tried this | GUI + CLI | No matches reported as no matches for these terms | [14:20](https://youtu.be/nASZL_eB9Jo?t=860) |
+| F09 Repository analysis | GUI + CLI | A paper with no repository, and an unreachable one | [16:50](https://youtu.be/nASZL_eB9Jo?t=1010) |
+| F10 Project change summary | GUI + CLI | No prior snapshot, pointing at F02 | [18:12](https://youtu.be/nASZL_eB9Jo?t=1092) |
+| F11 Project-aware chat | GUI + CLI | A question with no relevant stored record | [20:37](https://youtu.be/nASZL_eB9Jo?t=1237) |
+| F12 Weekly digest | GUI + CLI | Nothing new since the last digest — press it twice, the second is correctly empty (C29) | [23:45](https://youtu.be/nASZL_eB9Jo?t=1425) |
+| F13 Solution landscape | GUI | Too few papers for sub-branches; the unclassified branch | [26:33](https://youtu.be/nASZL_eB9Jo?t=1593) |
 
 **Suggested recording order**, so that each demonstration has the state it needs: F01 → F02
 → F03 → F04 → F05 → F06 → F07 → F09 → F10 → F11 → F08 → F12 → F13. F13 last, because it
